@@ -33,7 +33,7 @@ import {
   Wallet,
   X
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Screen =
   | "dashboard"
@@ -116,6 +116,13 @@ const settings = {
   currentIncome: 0,
   emergencyStatus: "red"
 };
+
+const authorizedUsers: Record<string, string> = {
+  "9842590008": "Maria",
+  "9841401005": "Gina"
+};
+
+const accessCodeHash = "ee78e630710019726506a5762a204876a71e300a2ec57da1445eb3644ca80bb1";
 
 const accounts = [
   {
@@ -552,10 +559,17 @@ function priorityLabel(priority: Priority) {
 }
 
 function AppShell() {
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [quickOpen, setQuickOpen] = useState(false);
   const [incomes, setIncomes] = useState<Income[]>(initialIncomes);
   const [expenses, setExpenses] = useState<Expense[]>(initialExpenses);
+
+  useEffect(() => {
+    setCurrentUser(window.localStorage.getItem("control30-user"));
+    setAuthReady(true);
+  }, []);
 
   const totals = useMemo(() => {
     const monthIncome = incomes.reduce((sum, item) => sum + item.amount, 0);
@@ -598,6 +612,24 @@ function AppShell() {
     };
   }, [expenses, incomes]);
 
+  function login(user: string) {
+    window.localStorage.setItem("control30-user", user);
+    setCurrentUser(user);
+  }
+
+  function logout() {
+    window.localStorage.removeItem("control30-user");
+    setCurrentUser(null);
+  }
+
+  if (!authReady) {
+    return <main className="min-h-screen bg-calm" />;
+  }
+
+  if (!currentUser) {
+    return <LoginScreen onLogin={login} />;
+  }
+
   return (
     <main className="min-h-screen bg-calm text-ink lg:flex">
       <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white px-5 py-6 lg:block">
@@ -626,6 +658,12 @@ function AppShell() {
           <BriefcaseBusiness className="h-5 w-5" />
           Plan familiar
         </button>
+        <button
+          className="mt-3 flex min-h-12 w-full items-center justify-center rounded-2xl bg-slate-100 px-4 font-semibold text-slate-700"
+          onClick={logout}
+        >
+          Salir
+        </button>
       </aside>
 
       <div className="min-w-0 flex-1 pb-28 lg:pb-0">
@@ -634,14 +672,23 @@ function AppShell() {
           <div>
             <p className="text-sm font-medium text-slate-500">Control 30</p>
             <h1 className="text-2xl font-bold tracking-normal lg:text-3xl">{titleFor(screen)}</h1>
+            <p className="mt-1 text-xs font-semibold text-slate-500">Sesion: {currentUser}</p>
           </div>
-          <button
-            className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm lg:hidden"
-            onClick={() => setScreen("planb")}
-            aria-label="Abrir Plan B"
-          >
-            <BriefcaseBusiness className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              className="hidden min-h-10 rounded-xl bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm lg:block"
+              onClick={logout}
+            >
+              Salir
+            </button>
+            <button
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm lg:hidden"
+              onClick={() => setScreen("planb")}
+              aria-label="Abrir Plan B"
+            >
+              <BriefcaseBusiness className="h-5 w-5" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -717,6 +764,75 @@ function AppShell() {
         ))}
       </nav>
       </div>
+    </main>
+  );
+}
+
+async function sha256(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function LoginScreen({ onLogin }: { onLogin: (user: string) => void }) {
+  const [phone, setPhone] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+  const [error, setError] = useState("");
+
+  async function submit() {
+    const normalizedPhone = phone.replace(/\D/g, "");
+    const user = authorizedUsers[normalizedPhone];
+    const codeHash = await sha256(accessCode);
+
+    if (!user || codeHash !== accessCodeHash) {
+      setError("Celular o clave incorrectos.");
+      return;
+    }
+
+    onLogin(user);
+  }
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-calm px-5 py-10 text-ink">
+      <section className="w-full max-w-md rounded-3xl bg-white p-5 shadow-soft">
+        <p className="text-sm font-semibold text-slate-500">Control 30</p>
+        <h1 className="mt-2 text-3xl font-bold tracking-normal">Finanzas familiares</h1>
+        <p className="mt-2 text-sm leading-6 text-slate-600">Acceso privado para Maria y Gina.</p>
+
+        <div className="mt-6 grid gap-3">
+          <label className="grid gap-1">
+            <span className="text-sm font-semibold text-slate-600">Celular</span>
+            <input
+              className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+              inputMode="tel"
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              placeholder="10 digitos"
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-sm font-semibold text-slate-600">Clave</span>
+            <input
+              className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+              type="password"
+              value={accessCode}
+              onChange={(event) => setAccessCode(event.target.value)}
+              placeholder="Clave privada"
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void submit();
+                }
+              }}
+            />
+          </label>
+          {error ? <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-emergency">{error}</p> : null}
+          <button className="min-h-12 rounded-xl bg-ink px-4 font-semibold text-white" onClick={() => void submit()}>
+            Entrar
+          </button>
+        </div>
+      </section>
     </main>
   );
 }
