@@ -1,0 +1,19 @@
+{
+  "name": "Control 30",
+  "short_name": "Control 30",
+  "description": "Control de finanzas familiares para Maria y Gina.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f7f8",
+  "theme_color": "#1f2933",
+  "icons": [
+    {
+      "src": "/icons/control-30-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

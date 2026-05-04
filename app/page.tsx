@@ -1,0 +1,2517 @@
+"use client";
+
+import {
+  AlertTriangle,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  Bell,
+  BriefcaseBusiness,
+  CalendarClock,
+  CalendarDays,
+  ChevronRight,
+  CircleDollarSign,
+  ClipboardList,
+  Clock3,
+  FileText,
+  Home,
+  ImageIcon,
+  Landmark,
+  LayoutDashboard,
+  ListChecks,
+  MinusCircle,
+  Mic,
+  Pencil,
+  PiggyBank,
+  Plus,
+  ReceiptText,
+  Save,
+  ShieldAlert,
+  Sparkles,
+  Store,
+  Trash2,
+  UserRound,
+  Wallet,
+  X
+} from "lucide-react";
+import { useMemo, useState } from "react";
+
+type Screen =
+  | "dashboard"
+  | "incomes"
+  | "expenses"
+  | "accounts"
+  | "debts"
+  | "subscriptions"
+  | "payments"
+  | "agenda"
+  | "botica"
+  | "walkme"
+  | "crisis"
+  | "planb";
+
+type Priority = "must_pay" | "important" | "negotiable" | "pause" | "eliminate";
+type ExpenseArea = "Casa" | "Personal Maria" | "Personal Gina" | "Compartido" | "Botica Spa" | "Walkme" | "Deuda" | "Suscripcion" | "Emergencia" | "Otro";
+type Expense = {
+  id: string;
+  date: string;
+  name: string;
+  amount: number;
+  type: ExpenseArea;
+  category: string;
+  priority: Priority;
+  paidBy: string;
+  due: string;
+  business?: "Botica Spa" | "Walkme";
+  paidPersonally?: boolean;
+  attachmentName?: string;
+  attachmentType?: "image" | "pdf";
+  attachmentUrl?: string;
+};
+type IncomeArea = "Personal Maria" | "Personal Gina" | "Compartido" | "Botica Spa" | "Walkme" | "Prestamo" | "Apoyo familiar" | "Reembolso" | "Otro";
+type Income = {
+  id: string;
+  date: string;
+  source: string;
+  type: IncomeArea;
+  amount: number;
+  account: string;
+  method: string;
+  notes: string;
+  business?: "Botica Spa" | "Walkme";
+  attachmentName?: string;
+  attachmentType?: "image" | "pdf";
+  attachmentUrl?: string;
+};
+type ExpenseFilter = "Todos" | ExpenseArea;
+type IncomeFilter = "Todos" | IncomeArea;
+type AgendaType = "payment" | "task" | "debt" | "subscription" | "reminder" | "sale" | "pending";
+type AgendaArea = "home" | "maria" | "gina" | "shared" | "botica_spa" | "walkme";
+type AgendaPriority = "urgent" | "must_pay" | "important" | "negotiable" | "pause" | "low";
+type AgendaStatus = "pending" | "done" | "paid" | "overdue" | "negotiated" | "paused";
+type AgendaItem = {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  time: string;
+  type: AgendaType;
+  area: AgendaArea;
+  amount: number;
+  priority: AgendaPriority;
+  status: AgendaStatus;
+  source: "agenda" | "upcoming_payment";
+  createdAt: string;
+  updatedAt: string;
+};
+
+const money = new Intl.NumberFormat("es-MX", {
+  style: "currency",
+  currency: "MXN",
+  maximumFractionDigits: 0
+});
+
+const settings = {
+  availableMoney: 30000,
+  monthlySurvivalAmount: 42000,
+  currentIncome: 0,
+  emergencyStatus: "red"
+};
+
+const accounts = [
+  {
+    name: "Cuenta Maria",
+    type: "Cuenta bancaria",
+    owner: "Maria",
+    balance: 18500,
+    debt: 0,
+    due: "",
+    status: "Activa",
+    note: "Principal para casa"
+  },
+  {
+    name: "Ahorros compartidos",
+    type: "Ahorros",
+    owner: "Compartida",
+    balance: 9500,
+    debt: 0,
+    due: "",
+    status: "Activa",
+    note: "Usar solo para pagos urgentes"
+  },
+  {
+    name: "Tarjeta Gina",
+    type: "Tarjeta de credito",
+    owner: "Gina",
+    balance: 0,
+    debt: 7800,
+    due: "2026-05-06",
+    status: "Deuda",
+    note: "Pago minimo esta semana"
+  },
+  {
+    name: "Efectivo casa",
+    type: "Efectivo",
+    owner: "Compartida",
+    balance: 800,
+    debt: 0,
+    due: "",
+    status: "Critica",
+    note: "Menos de $1,000"
+  }
+];
+
+const initialIncomes: Income[] = [
+  {
+    id: "income-month-sales",
+    date: "2026-05-01",
+    source: "Ventas del mes",
+    type: "Compartido",
+    amount: 0,
+    account: "Cuenta Maria",
+    method: "Manual",
+    notes: "Ingresos actuales en cero"
+  }
+];
+
+const initialExpenses: Expense[] = [
+  {
+    id: "expense-home-rent",
+    date: "2026-05-01",
+    name: "Renta casa",
+    amount: 14500,
+    type: "Casa",
+    category: "Renta",
+    priority: "must_pay",
+    paidBy: "Compartido",
+    due: "2026-05-03"
+  },
+  {
+    id: "expense-home-groceries",
+    date: "2026-05-01",
+    name: "Supermercado minimo",
+    amount: 5200,
+    type: "Casa",
+    category: "Comida",
+    priority: "important",
+    paidBy: "Maria",
+    due: "2026-05-05"
+  },
+  {
+    id: "expense-botica-ads",
+    date: "2026-05-01",
+    name: "Publicidad Botica Spa",
+    amount: 2800,
+    type: "Botica Spa",
+    category: "Publicidad",
+    priority: "pause",
+    paidBy: "Maria",
+    due: "2026-05-08",
+    business: "Botica Spa",
+    paidPersonally: true
+  },
+  {
+    id: "expense-walkme-rent",
+    date: "2026-05-01",
+    name: "Renta Walkme",
+    amount: 6000,
+    type: "Walkme",
+    category: "Renta local",
+    priority: "must_pay",
+    paidBy: "Gina",
+    due: "2026-05-05",
+    business: "Walkme",
+    paidPersonally: true
+  },
+  {
+    id: "expense-walkme-taxes",
+    date: "2026-05-01",
+    name: "Impuestos Walkme",
+    amount: 7000,
+    type: "Walkme",
+    category: "Impuestos",
+    priority: "must_pay",
+    paidBy: "Gina",
+    due: "2026-05-10",
+    business: "Walkme",
+    paidPersonally: true
+  },
+  {
+    id: "expense-walkme-power",
+    date: "2026-05-01",
+    name: "Luz Walkme",
+    amount: 1300,
+    type: "Walkme",
+    category: "Servicios",
+    priority: "important",
+    paidBy: "Gina",
+    due: "2026-05-08",
+    business: "Walkme",
+    paidPersonally: true
+  },
+  {
+    id: "expense-walkme-telmex",
+    date: "2026-05-01",
+    name: "Telmex Walkme",
+    amount: 700,
+    type: "Walkme",
+    category: "Servicios",
+    priority: "important",
+    paidBy: "Gina",
+    due: "2026-05-08",
+    business: "Walkme",
+    paidPersonally: true
+  },
+  {
+    id: "expense-walkme-municipio",
+    date: "2026-05-01",
+    name: "Municipio 1.20 Walkme",
+    amount: 2500,
+    type: "Walkme",
+    category: "Municipio",
+    priority: "negotiable",
+    paidBy: "Gina",
+    due: "2026-05-12",
+    business: "Walkme",
+    paidPersonally: true
+  },
+  {
+    id: "expense-walkme-trino",
+    date: "2026-05-01",
+    name: "Trino Walkme",
+    amount: 1750,
+    type: "Walkme",
+    category: "Proveedor",
+    priority: "negotiable",
+    paidBy: "Gina",
+    due: "2026-05-12",
+    business: "Walkme",
+    paidPersonally: true
+  },
+  {
+    id: "expense-walkme-payroll-tax",
+    date: "2026-05-01",
+    name: "4% nomina Walkme",
+    amount: 700,
+    type: "Walkme",
+    category: "Nomina",
+    priority: "must_pay",
+    paidBy: "Gina",
+    due: "2026-05-15",
+    business: "Walkme",
+    paidPersonally: true
+  },
+  {
+    id: "expense-walkme-atocha",
+    date: "2026-05-01",
+    name: "Atocha Walkme",
+    amount: 500,
+    type: "Walkme",
+    category: "Proveedor",
+    priority: "negotiable",
+    paidBy: "Gina",
+    due: "2026-05-15",
+    business: "Walkme",
+    paidPersonally: true
+  },
+  {
+    id: "expense-shared-apps",
+    date: "2026-05-01",
+    name: "Apps no esenciales",
+    amount: 1200,
+    type: "Compartido",
+    category: "Apps",
+    priority: "eliminate",
+    paidBy: "Tarjeta Gina",
+    due: "2026-05-10"
+  }
+];
+
+const debts = [
+  {
+    name: "Tarjeta Gina",
+    creditor: "Banco",
+    total: 7800,
+    minimum: 1900,
+    due: "2026-05-06",
+    priority: "Pagar si o si",
+    status: "Pendiente"
+  },
+  {
+    name: "Proveedor Walkme",
+    creditor: "Proveedor",
+    total: 4200,
+    minimum: 4200,
+    due: "2026-04-29",
+    priority: "Negociar",
+    status: "Atrasada"
+  }
+];
+
+const subscriptions = [
+  {
+    name: "Herramienta IA",
+    amount: 600,
+    billing: "2026-05-04",
+    type: "Botica Spa",
+    category: "IA",
+    priority: "Pausar",
+    account: "Tarjeta Gina",
+    status: "Activa"
+  },
+  {
+    name: "Streaming",
+    amount: 299,
+    billing: "2026-05-06",
+    type: "Casa",
+    category: "TV / Streaming",
+    priority: "Cancelar",
+    account: "Tarjeta Gina",
+    status: "Activa"
+  },
+  {
+    name: "Dominio Walkme",
+    amount: 450,
+    billing: "2026-05-14",
+    type: "Walkme",
+    category: "Hosting / Dominio",
+    priority: "Necesaria",
+    account: "Cuenta Maria",
+    status: "Activa"
+  }
+];
+
+const upcomingPayments = [
+  {
+    name: "Renta casa",
+    amount: 14500,
+    due: "2026-05-03",
+    group: "Hoy",
+    type: "Casa",
+    priority: "Pagar si o si",
+    status: "Pendiente"
+  },
+  {
+    name: "Tarjeta Gina",
+    amount: 1900,
+    due: "2026-05-06",
+    group: "Esta semana",
+    type: "Tarjeta",
+    priority: "Pagar si o si",
+    status: "Pendiente"
+  },
+  {
+    name: "Proveedor Walkme",
+    amount: 4200,
+    due: "2026-04-29",
+    group: "Atrasados",
+    type: "Deuda",
+    priority: "Negociar",
+    status: "Atrasado"
+  },
+  {
+    name: "Dominio Walkme",
+    amount: 450,
+    due: "2026-05-14",
+    group: "Este mes",
+    type: "Walkme",
+    priority: "Importante",
+    status: "Pendiente"
+  }
+];
+
+const initialAgendaItems: AgendaItem[] = [
+  {
+    id: "agenda-negotiate-walkme-provider",
+    title: "Negociar proveedor Walkme",
+    description: "Pedir prorroga y registrar respuesta.",
+    date: "2026-05-01",
+    time: "12:30",
+    type: "pending",
+    area: "walkme",
+    amount: 4200,
+    priority: "urgent",
+    status: "pending",
+    source: "agenda",
+    createdAt: "2026-05-01",
+    updatedAt: "2026-05-01"
+  },
+  {
+    id: "agenda-cancel-streaming",
+    title: "Cancelar streaming",
+    description: "Marcar suscripcion como cancelada antes del cobro.",
+    date: "2026-05-01",
+    time: "18:00",
+    type: "subscription",
+    area: "home",
+    amount: 299,
+    priority: "important",
+    status: "pending",
+    source: "agenda",
+    createdAt: "2026-05-01",
+    updatedAt: "2026-05-01"
+  },
+  {
+    id: "agenda-botica-promo",
+    title: "Publicar promocion Botica Spa",
+    description: "Publicar oferta y anotar mensajes recibidos.",
+    date: "2026-05-02",
+    time: "09:00",
+    type: "sale",
+    area: "botica_spa",
+    amount: 0,
+    priority: "important",
+    status: "pending",
+    source: "agenda",
+    createdAt: "2026-05-01",
+    updatedAt: "2026-05-01"
+  },
+  {
+    id: "agenda-contact-botica-clients",
+    title: "Contactar clientas de Botica",
+    description: "Enviar WhatsApp a 10 clientas.",
+    date: "2026-05-02",
+    time: "11:00",
+    type: "sale",
+    area: "botica_spa",
+    amount: 0,
+    priority: "important",
+    status: "pending",
+    source: "agenda",
+    createdAt: "2026-05-01",
+    updatedAt: "2026-05-01"
+  }
+];
+
+const followUps = [
+  {
+    name: "Clientas Botica Spa",
+    area: "Botica Spa",
+    owner: "Maria",
+    status: "Contactar hoy",
+    value: "Meta: 10 mensajes",
+    next: "Hoy"
+  },
+  {
+    name: "Proveedor Walkme",
+    area: "Walkme",
+    owner: "Gina",
+    status: "Esperando respuesta",
+    value: "$4,200",
+    next: "Hoy"
+  },
+  {
+    name: "Renta local Walkme",
+    area: "Walkme",
+    owner: "Ambas",
+    status: "Reagendar",
+    value: "$6,000",
+    next: "Esta semana"
+  },
+  {
+    name: "Promocion Botica Spa",
+    area: "Ventas",
+    owner: "Maria",
+    status: "En proceso",
+    value: "Meta: $3,000",
+    next: "Sabado"
+  }
+];
+
+const navItems = [
+  { id: "dashboard" as Screen, label: "Inicio", icon: LayoutDashboard },
+  { id: "agenda" as Screen, label: "Agenda", icon: CalendarDays },
+  { id: "expenses" as Screen, label: "Gastos", icon: ReceiptText },
+  { id: "botica" as Screen, label: "Negocios", icon: Store },
+  { id: "crisis" as Screen, label: "Prioridad", icon: ShieldAlert }
+];
+
+const quickActions = [
+  { id: "incomes" as Screen, label: "Agregar ingreso", icon: ArrowUpCircle },
+  { id: "expenses" as Screen, label: "Agregar gasto", icon: ArrowDownCircle },
+  { id: "accounts" as Screen, label: "Agregar cuenta", icon: Wallet },
+  { id: "debts" as Screen, label: "Agregar deuda", icon: Landmark },
+  { id: "subscriptions" as Screen, label: "Agregar suscripcion", icon: Bell },
+  { id: "payments" as Screen, label: "Agregar pago proximo", icon: CalendarClock },
+  { id: "agenda" as Screen, label: "Agregar actividad", icon: CalendarDays },
+  { id: "agenda" as Screen, label: "Agregar seguimiento", icon: ClipboardList }
+];
+
+function calcDays(amount: number, monthly: number) {
+  return Math.max(0, Math.floor(amount / (monthly / 30)));
+}
+
+function priorityLabel(priority: Priority) {
+  const labels: Record<Priority, string> = {
+    must_pay: "Pagar si o si",
+    important: "Importante",
+    negotiable: "Negociable",
+    pause: "Pausar",
+    eliminate: "Eliminar"
+  };
+  return labels[priority];
+}
+
+function AppShell() {
+  const [screen, setScreen] = useState<Screen>("dashboard");
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [incomes, setIncomes] = useState<Income[]>(initialIncomes);
+  const [expenses, setExpenses] = useState<Expense[]>(initialExpenses);
+
+  const totals = useMemo(() => {
+    const monthIncome = incomes.reduce((sum, item) => sum + item.amount, 0);
+    const monthExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
+    const shortfall = Math.max(0, settings.monthlySurvivalAmount - settings.availableMoney);
+    const survivalDays = calcDays(settings.availableMoney, settings.monthlySurvivalAmount);
+    const personalBusiness = expenses
+      .filter((item) => item.paidPersonally)
+      .reduce((sum, item) => sum + item.amount, 0);
+    const boticaExpenses = expenses
+      .filter((item) => item.business === "Botica Spa")
+      .reduce((sum, item) => sum + item.amount, 0);
+    const walkmeExpenses = expenses
+      .filter((item) => item.business === "Walkme")
+      .reduce((sum, item) => sum + item.amount, 0);
+    const homeExpenses = expenses
+      .filter((item) => item.type === "Casa")
+      .reduce((sum, item) => sum + item.amount, 0);
+    const boticaIncome = incomes
+      .filter((item) => item.business === "Botica Spa")
+      .reduce((sum, item) => sum + item.amount, 0);
+    const walkmeIncome = incomes
+      .filter((item) => item.business === "Walkme")
+      .reduce((sum, item) => sum + item.amount, 0);
+
+    return {
+      monthIncome,
+      monthExpenses,
+      balance: monthIncome - monthExpenses,
+      shortfall,
+      survivalDays,
+      personalBusiness,
+      boticaExpenses,
+      walkmeExpenses,
+      homeExpenses,
+      boticaIncome,
+      walkmeIncome,
+      weeklySalesGoal: Math.ceil(shortfall / 4),
+      drainingBusiness: walkmeExpenses >= boticaExpenses ? "Walkme" : "Botica Spa"
+    };
+  }, [expenses, incomes]);
+
+  return (
+    <main className="min-h-screen bg-calm text-ink lg:flex">
+      <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white px-5 py-6 lg:block">
+        <div className="mb-7">
+          <p className="text-sm font-semibold text-slate-500">Control 30</p>
+          <p className="mt-1 text-2xl font-bold">Claridad financiera</p>
+        </div>
+        <div className="space-y-2">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              className={`flex min-h-12 w-full items-center gap-3 rounded-2xl px-4 text-left font-semibold ${
+                screen === item.id ? "bg-ink text-white" : "text-slate-600 hover:bg-slate-50"
+              }`}
+              onClick={() => setScreen(item.id)}
+            >
+              <item.icon className="h-5 w-5" />
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <button
+          className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-emergency px-4 font-semibold text-white"
+          onClick={() => setScreen("planb")}
+        >
+          <BriefcaseBusiness className="h-5 w-5" />
+          Plan familiar
+        </button>
+      </aside>
+
+      <div className="min-w-0 flex-1 pb-28 lg:pb-0">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-calm/95 px-5 pb-3 pt-5 backdrop-blur lg:px-8">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-slate-500">Control 30</p>
+            <h1 className="text-2xl font-bold tracking-normal lg:text-3xl">{titleFor(screen)}</h1>
+          </div>
+          <button
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm lg:hidden"
+            onClick={() => setScreen("planb")}
+            aria-label="Abrir Plan B"
+          >
+            <BriefcaseBusiness className="h-5 w-5" />
+          </button>
+        </div>
+      </header>
+
+      <section className="mx-auto w-full max-w-6xl px-5 py-5 lg:px-8 lg:py-7">
+        {screen === "dashboard" && <Dashboard totals={totals} setScreen={setScreen} />}
+        {screen === "incomes" && <IncomeScreen incomes={incomes} setIncomes={setIncomes} />}
+        {screen === "expenses" && <ExpenseScreen expenses={expenses} setExpenses={setExpenses} />}
+        {screen === "accounts" && <AccountsScreen />}
+        {screen === "debts" && <DebtsScreen />}
+        {screen === "subscriptions" && <SubscriptionsScreen />}
+        {screen === "payments" && <PaymentsScreen />}
+        {screen === "agenda" && <AgendaScreen />}
+        {screen === "botica" && <BusinessScreen business="Botica Spa" expenses={expenses} incomes={incomes} setScreen={setScreen} />}
+        {screen === "walkme" && <BusinessScreen business="Walkme" expenses={expenses} incomes={incomes} setScreen={setScreen} />}
+        {screen === "crisis" && <CrisisScreen totals={totals} setScreen={setScreen} />}
+        {screen === "planb" && <PlanBScreen totals={totals} />}
+      </section>
+
+      {quickOpen && (
+        <div className="fixed inset-0 z-30 bg-ink/30 px-5 pb-28 pt-20 lg:flex lg:items-start lg:justify-center" onClick={() => setQuickOpen(false)}>
+          <div className="rounded-2xl bg-white p-3 shadow-soft" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between px-2">
+              <p className="font-semibold">Agregar rapido</p>
+              <button
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100"
+                onClick={() => setQuickOpen(false)}
+                aria-label="Cerrar acciones"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid gap-2">
+              {quickActions.map((action) => (
+                <button
+                  key={action.label}
+                  className="flex min-h-14 items-center gap-3 rounded-xl border border-slate-100 bg-white px-3 text-left active:bg-slate-50"
+                  onClick={() => {
+                    setScreen(action.id);
+                    setQuickOpen(false);
+                  }}
+                >
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100">
+                    <action.icon className="h-5 w-5" />
+                  </span>
+                  <span className="font-medium">{action.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <button
+        className="fixed bottom-20 left-1/2 z-40 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full bg-ink text-white shadow-soft lg:hidden"
+        onClick={() => setQuickOpen(true)}
+        aria-label="Agregar"
+      >
+        <Plus className="h-7 w-7" />
+      </button>
+
+      <nav className="fixed bottom-0 left-1/2 z-30 grid w-full -translate-x-1/2 grid-cols-5 border-t border-slate-200 bg-white px-2 pb-3 pt-2 lg:hidden">
+        {navItems.map((item) => (
+          <button
+            key={item.id}
+            className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold ${
+              screen === item.id ? "bg-slate-100 text-ink" : "text-slate-500"
+            }`}
+            onClick={() => setScreen(item.id)}
+          >
+            <item.icon className="h-5 w-5" />
+            {item.label}
+          </button>
+        ))}
+      </nav>
+      </div>
+    </main>
+  );
+}
+
+function Dashboard({
+  totals,
+  setScreen
+}: {
+  totals: ReturnType<typeof useTotalsShape>;
+  setScreen: (screen: Screen) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <StatusHero
+        title="Estado de atencion"
+        message={`Con ${money.format(settings.availableMoney)} disponibles, faltan ${money.format(
+          totals.shortfall
+        )} para cubrir el mes.`}
+        value={money.format(settings.availableMoney)}
+        subvalue={`${totals.survivalDays} dias estimados de cobertura`}
+      />
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MetricCard label="Minimo mensual" value={money.format(settings.monthlySurvivalAmount)} />
+        <MetricCard label="Ingresos del mes" value={money.format(totals.monthIncome)} />
+        <MetricCard label="Egresos del mes" value={money.format(totals.monthExpenses)} />
+        <MetricCard label="Balance real" value={money.format(totals.balance)} tone="red" />
+      </div>
+
+      <CalmNotice text={`Meta minima de ventas semanal: ${money.format(totals.weeklySalesGoal)}.`} />
+
+      <SectionTitle title="Hoy" action="Ver agenda" onClick={() => setScreen("agenda")} />
+      <div className="grid gap-3 lg:grid-cols-2">
+        <InsightRow icon={Clock3} label="Pendientes de hoy" value="3 actividades" tone="yellow" />
+        <InsightRow icon={ClipboardList} label="Seguimientos abiertos" value="4 seguimientos" />
+      </div>
+
+      <SectionTitle title="Lo importante esta semana" action="Ver prioridades" onClick={() => setScreen("crisis")} />
+      <div className="space-y-3">
+        <InsightRow icon={CalendarClock} label="Pagos importantes" value={money.format(16400)} tone="red" />
+        <InsightRow icon={ListChecks} label="Gastos obligatorios" value={money.format(19700)} />
+        <InsightRow icon={MinusCircle} label="Gastos recortables" value={money.format(4000)} tone="yellow" />
+        <InsightRow icon={Store} label="Negocio que mas drena" value={totals.drainingBusiness} tone="red" />
+        <InsightRow icon={PiggyBank} label="Dinero personal usado en negocios" value={money.format(totals.personalBusiness)} />
+      </div>
+
+      <SectionTitle title="Separado por area" />
+      <div className="grid gap-3 lg:grid-cols-3">
+        <AreaButton label="Casa" value={money.format(totals.homeExpenses)} icon={Home} />
+        <AreaButton label="Botica Spa" value={money.format(totals.boticaExpenses)} icon={Sparkles} onClick={() => setScreen("botica")} />
+        <AreaButton label="Walkme" value={money.format(totals.walkmeExpenses)} icon={Store} onClick={() => setScreen("walkme")} />
+      </div>
+
+      <CalmNotice text="Recomendacion: pagar renta y minimo de tarjeta, negociar proveedor Walkme y pausar publicidad esta semana." />
+    </div>
+  );
+}
+
+function IncomeScreen({
+  incomes,
+  setIncomes
+}: {
+  incomes: Income[];
+  setIncomes: React.Dispatch<React.SetStateAction<Income[]>>;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedArea, setSelectedArea] = useState<IncomeFilter>("Todos");
+  const groupedAreas: IncomeArea[] = ["Botica Spa", "Walkme", "Compartido", "Personal Maria", "Personal Gina", "Prestamo", "Apoyo familiar", "Reembolso", "Otro"];
+  const total = incomes.reduce((sum, item) => sum + item.amount, 0);
+  const visibleIncomes = selectedArea === "Todos" ? incomes : incomes.filter((item) => item.type === selectedArea);
+  const visibleTotal = visibleIncomes.reduce((sum, item) => sum + item.amount, 0);
+
+  function saveIncome(income: Income) {
+    setIncomes((current) => {
+      const exists = current.some((item) => item.id === income.id);
+      if (exists) {
+        return current.map((item) => (item.id === income.id ? income : item));
+      }
+      return [income, ...current];
+    });
+    setEditingId(null);
+  }
+
+  function deleteIncome(id: string) {
+    setIncomes((current) => current.filter((item) => item.id !== id));
+    if (editingId === id) {
+      setEditingId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <CalmNotice text="Registra ingresos por negocio o persona. Puedes dictarlo por voz y adjuntar foto o PDF de la factura; por ahora queda local mientras la app esta abierta." />
+      <div className="grid grid-cols-2 gap-3">
+        <MetricCard label="Total ingresos" value={money.format(total)} />
+        <MetricCard label="Registros" value={`${incomes.length}`} />
+      </div>
+      <AreaFilterTabs
+        areas={["Todos", ...groupedAreas]}
+        selected={selectedArea}
+        totals={Object.fromEntries(groupedAreas.map((area) => [area, incomes.filter((item) => item.type === area).reduce((sum, item) => sum + item.amount, 0)]))}
+        onSelect={(area) => setSelectedArea(area as IncomeFilter)}
+      />
+      <IncomeEditor onSave={saveIncome} defaultType={selectedArea === "Todos" ? "Compartido" : selectedArea} />
+
+      <div className="space-y-3">
+        <SectionTitle title={`${selectedArea} - ${money.format(visibleTotal)}`} />
+        {visibleIncomes.length === 0 ? (
+          <EmptyState text="No hay ingresos en esta seccion todavia." />
+        ) : (
+          visibleIncomes.map((income) =>
+            editingId === income.id ? (
+              <IncomeEditor key={income.id} income={income} onSave={saveIncome} onCancel={() => setEditingId(null)} />
+            ) : (
+              <IncomeItemCard key={income.id} income={income} onEdit={() => setEditingId(income.id)} onDelete={() => deleteIncome(income.id)} />
+            )
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ExpenseScreen({
+  expenses,
+  setExpenses
+}: {
+  expenses: Expense[];
+  setExpenses: React.Dispatch<React.SetStateAction<Expense[]>>;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedArea, setSelectedArea] = useState<ExpenseFilter>("Todos");
+  const groupedAreas: ExpenseArea[] = ["Casa", "Botica Spa", "Walkme", "Compartido", "Personal Maria", "Personal Gina", "Deuda", "Suscripcion", "Emergencia", "Otro"];
+  const total = expenses.reduce((sum, item) => sum + item.amount, 0);
+  const visibleExpenses = selectedArea === "Todos" ? expenses : expenses.filter((item) => item.type === selectedArea);
+  const visibleTotal = visibleExpenses.reduce((sum, item) => sum + item.amount, 0);
+
+  function saveExpense(expense: Expense) {
+    setExpenses((current) => {
+      const exists = current.some((item) => item.id === expense.id);
+      if (exists) {
+        return current.map((item) => (item.id === expense.id ? expense : item));
+      }
+      return [expense, ...current];
+    });
+    setEditingId(null);
+  }
+
+  function deleteExpense(id: string) {
+    setExpenses((current) => current.filter((item) => item.id !== id));
+    if (editingId === id) {
+      setEditingId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <CalmNotice text="Los gastos ahora se separan por area y negocio. Puedes agregar, editar o borrar registros; por ahora se guardan solo mientras la app esta abierta." />
+      <div className="grid grid-cols-2 gap-3">
+        <MetricCard label="Total egresos" value={money.format(total)} tone="red" />
+        <MetricCard label="Registros" value={`${expenses.length}`} />
+      </div>
+      <AreaFilterTabs
+        areas={["Todos", ...groupedAreas]}
+        selected={selectedArea}
+        totals={Object.fromEntries(groupedAreas.map((area) => [area, expenses.filter((item) => item.type === area).reduce((sum, item) => sum + item.amount, 0)]))}
+        onSelect={(area) => setSelectedArea(area as ExpenseFilter)}
+      />
+      <GoogleSheetsImportCard />
+      <ExpenseEditor onSave={saveExpense} defaultType={selectedArea === "Todos" ? "Casa" : selectedArea} />
+
+      <div className="space-y-3">
+        <SectionTitle title={`${selectedArea} - ${money.format(visibleTotal)}`} />
+        {visibleExpenses.length === 0 ? (
+          <EmptyState text="No hay gastos en esta seccion todavia." />
+        ) : (
+          visibleExpenses.map((expense) =>
+            editingId === expense.id ? (
+              <ExpenseEditor key={expense.id} expense={expense} onSave={saveExpense} onCancel={() => setEditingId(null)} />
+            ) : (
+              <ExpenseItemCard key={expense.id} expense={expense} onEdit={() => setEditingId(expense.id)} onDelete={() => deleteExpense(expense.id)} />
+            )
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AccountsScreen() {
+  return (
+    <div className="space-y-4">
+      <MockForm fields={["Nombre", "Tipo", "Dueno", "Saldo actual", "Limite de credito", "Deuda actual", "Fecha de corte", "Fecha limite", "Pago minimo", "Estado", "Notas"]} />
+      <SectionTitle title="Cuentas y tarjetas" />
+      <div className="space-y-3">
+        {accounts.map((account) => (
+          <Card key={account.name}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">{account.name}</p>
+                <p className="mt-1 text-sm text-slate-500">{account.type} - {account.owner}</p>
+              </div>
+              <StatusPill label={account.status} tone={account.status === "Critica" || account.status === "Deuda" ? "red" : "green"} />
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <MetricCard label="Saldo" value={money.format(account.balance)} compact />
+              <MetricCard label="Deuda" value={money.format(account.debt)} compact tone={account.debt > 0 ? "red" : "default"} />
+            </div>
+            <p className="mt-3 text-sm text-slate-600">{account.note}</p>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DebtsScreen() {
+  return (
+    <div className="space-y-4">
+      <MockForm fields={["Nombre de la deuda", "Acreedor", "Monto total", "Pago minimo", "Fecha de pago", "Cuenta asociada", "Prioridad", "Estado", "Notas"]} />
+      <SectionTitle title="Deudas separadas" />
+      {debts.map((debt) => (
+        <DebtCard key={debt.name} debt={debt} />
+      ))}
+    </div>
+  );
+}
+
+function SubscriptionsScreen() {
+  return (
+    <div className="space-y-4">
+      <MockForm fields={["Nombre", "Monto mensual", "Fecha de cobro", "Tipo", "Categoria", "Prioridad", "Cuenta o tarjeta", "Estado", "Notas"]} />
+      <SectionTitle title="Suscripciones" />
+      <div className="space-y-3">
+        {subscriptions.map((item) => (
+          <Card key={item.name}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">{item.name}</p>
+                <p className="text-sm text-slate-500">{item.type} - {item.category}</p>
+              </div>
+              <StatusPill label={item.priority} tone={item.priority === "Cancelar" ? "red" : item.priority === "Pausar" ? "yellow" : "green"} />
+            </div>
+            <p className="mt-3 text-2xl font-bold">{money.format(item.amount)}</p>
+            <p className="text-sm text-slate-500">Se cobra el {item.billing} en {item.account}</p>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PaymentsScreen() {
+  const groups = ["Hoy", "Esta semana", "Este mes", "Atrasados", "Pagados"];
+  return (
+    <div className="space-y-4">
+      <MockForm fields={["Nombre del pago", "Monto", "Fecha limite", "Tipo", "Prioridad", "Estado", "Cuenta sugerida", "Negocio relacionado", "Notas"]} />
+      {groups.map((group) => (
+        <div key={group} className="space-y-2">
+          <SectionTitle title={group} />
+          {upcomingPayments.filter((payment) => payment.group === group).length === 0 ? (
+            <p className="rounded-2xl bg-white p-4 text-sm text-slate-500">Sin pagos en esta seccion.</p>
+          ) : (
+            upcomingPayments
+              .filter((payment) => payment.group === group)
+              .map((payment) => <PaymentCard key={payment.name} payment={payment} />)
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function paymentToAgendaItem(payment: (typeof upcomingPayments)[number]): AgendaItem {
+  return {
+    id: `payment-${payment.name.toLowerCase().replace(/\s+/g, "-")}`,
+    title: payment.name,
+    description: `${payment.type} - ${payment.priority}`,
+    date: payment.due,
+    time: "09:00",
+    type: payment.type === "Deuda" ? "debt" : "payment",
+    area: payment.type === "Walkme" ? "walkme" : payment.type === "Casa" ? "home" : "shared",
+    amount: payment.amount,
+    priority: payment.priority === "Pagar si o si" ? "must_pay" : payment.priority === "Negociar" ? "negotiable" : "important",
+    status: payment.status === "Atrasado" ? "overdue" : payment.status === "Pagado" ? "paid" : "pending",
+    source: "upcoming_payment",
+    createdAt: "2026-05-01",
+    updatedAt: "2026-05-01"
+  };
+}
+
+function sumAgendaAmount(items: AgendaItem[]) {
+  return items.reduce((sum, item) => sum + item.amount, 0);
+}
+
+function AgendaScreen() {
+  const [tab, setTab] = useState<"Hoy" | "Semana" | "Mes" | "Atrasados" | "Pagados">("Semana");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [formType, setFormType] = useState<AgendaType | null>(null);
+  const [editingItem, setEditingItem] = useState<AgendaItem | null>(null);
+  const [items, setItems] = useState<AgendaItem[]>(() => [...upcomingPayments.map(paymentToAgendaItem), ...initialAgendaItems]);
+  const weekDays = [
+    { label: "Hoy", day: "Vie", date: "2026-05-01" },
+    { label: "Sabado", day: "Sab", date: "2026-05-02" },
+    { label: "Domingo", day: "Dom", date: "2026-05-03" },
+    { label: "Lunes", day: "Lun", date: "2026-05-04" },
+    { label: "Martes", day: "Mar", date: "2026-05-05" },
+    { label: "Miercoles", day: "Mie", date: "2026-05-06" },
+    { label: "Jueves", day: "Jue", date: "2026-05-07" }
+  ];
+
+  const todayItems = items.filter((item) => item.date === "2026-05-01" && !["done", "paid"].includes(item.status));
+  const weekItems = items.filter((item) => item.date >= "2026-05-01" && item.date <= "2026-05-07");
+  const overdueItems = items.filter((item) => item.status === "overdue" || item.date < "2026-05-01");
+  const paidItems = items.filter((item) => item.status === "paid" || item.status === "done");
+  const urgentPayments = items.filter((item) => item.type === "payment" && ["urgent", "must_pay"].includes(item.priority) && !["paid", "done"].includes(item.status));
+  const visibleItems =
+    tab === "Hoy" ? todayItems : tab === "Semana" ? weekItems : tab === "Mes" ? items : tab === "Atrasados" ? overdueItems : paidItems;
+
+  function saveItem(item: AgendaItem) {
+    setItems((current) => {
+      const exists = current.some((entry) => entry.id === item.id);
+      if (exists) {
+        return current.map((entry) => (entry.id === item.id ? { ...item, updatedAt: "2026-05-01" } : entry));
+      }
+      return [{ ...item, updatedAt: "2026-05-01" }, ...current];
+    });
+    setDrawerOpen(false);
+    setFormType(null);
+    setEditingItem(null);
+  }
+
+  function updateStatus(id: string, status: AgendaStatus) {
+    setItems((current) => current.map((item) => (item.id === id ? { ...item, status, updatedAt: "2026-05-01" } : item)));
+  }
+
+  function deleteItem(id: string) {
+    setItems((current) => current.filter((item) => item.id !== id));
+  }
+
+  function openForm(type: AgendaType) {
+    setFormType(type);
+    setEditingItem(null);
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 rounded-3xl bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="text-3xl font-bold tracking-normal">Agenda</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">Pagos, pendientes y tareas de la semana.</p>
+        </div>
+        <button
+          className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-ink px-5 font-semibold text-white"
+          onClick={() => {
+            setDrawerOpen(true);
+            setFormType(null);
+            setEditingItem(null);
+          }}
+        >
+          <Plus className="h-5 w-5" />
+          Agendar
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <AgendaSummaryCard title="Hoy" count={todayItems.length} amount={sumAgendaAmount(todayItems)} tone="default" />
+        <AgendaSummaryCard title="Esta semana" count={weekItems.length} amount={sumAgendaAmount(weekItems)} tone="yellow" />
+        <AgendaSummaryCard title="Atrasados" count={overdueItems.length} amount={sumAgendaAmount(overdueItems)} tone="red" />
+        <AgendaSummaryCard title="Pagos urgentes" count={urgentPayments.length} amount={sumAgendaAmount(urgentPayments)} tone="red" />
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="space-y-3">
+          <div className="rounded-2xl bg-white p-3 shadow-sm">
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+              {(["Hoy", "Semana", "Mes", "Atrasados", "Pagados"] as const).map((item) => (
+                <button
+                  key={item}
+                  className={`min-h-11 rounded-xl px-3 text-left font-semibold ${tab === item ? "bg-ink text-white" : "bg-slate-50 text-slate-700"}`}
+                  onClick={() => setTab(item)}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+          <CalmNotice text="Los pagos proximos aparecen aqui sin duplicarse: se leen como items de agenda para poder verlos junto con tareas y pendientes." />
+        </aside>
+
+        <section className="space-y-4">
+          {tab === "Semana" ? (
+            <div className="grid gap-3">
+              {weekDays.map((day) => (
+                <AgendaDayGroup
+                  key={day.date}
+                  title={day.label}
+                  subtitle={`${day.day} ${day.date.slice(-2)}`}
+                  items={items.filter((item) => item.date === day.date)}
+                  onDone={(id) => updateStatus(id, "done")}
+                  onPaid={(id) => updateStatus(id, "paid")}
+                  onNegotiated={(id) => updateStatus(id, "negotiated")}
+                  onEdit={(item) => {
+                    setEditingItem(item);
+                    setFormType(item.type);
+                    setDrawerOpen(true);
+                  }}
+                  onDelete={deleteItem}
+                />
+              ))}
+            </div>
+          ) : (
+            <AgendaDayGroup
+              title={tab}
+              subtitle={`${visibleItems.length} registros`}
+              items={visibleItems}
+              onDone={(id) => updateStatus(id, "done")}
+              onPaid={(id) => updateStatus(id, "paid")}
+              onNegotiated={(id) => updateStatus(id, "negotiated")}
+              onEdit={(item) => {
+                setEditingItem(item);
+                setFormType(item.type);
+                setDrawerOpen(true);
+              }}
+              onDelete={deleteItem}
+            />
+          )}
+        </section>
+      </div>
+
+      {drawerOpen ? (
+        <AgendaDrawer
+          selectedType={formType}
+          editingItem={editingItem}
+          onClose={() => {
+            setDrawerOpen(false);
+            setFormType(null);
+            setEditingItem(null);
+          }}
+          onPick={openForm}
+          onSave={saveItem}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function AgendaSummaryCard({ title, count, amount, tone }: { title: string; count: number; amount: number; tone: "default" | "yellow" | "red" }) {
+  const toneClass = tone === "red" ? "text-emergency" : tone === "yellow" ? "text-alert" : "text-ink";
+  return (
+    <Card>
+      <p className="text-sm font-semibold text-slate-500">{title}</p>
+      <p className={`mt-2 text-3xl font-bold ${toneClass}`}>{count}</p>
+      <p className="mt-1 text-sm font-semibold text-slate-600">{amount > 0 ? money.format(amount) : "Sin monto"}</p>
+    </Card>
+  );
+}
+
+function AgendaDayGroup({
+  title,
+  subtitle,
+  items,
+  onDone,
+  onPaid,
+  onNegotiated,
+  onEdit,
+  onDelete
+}: {
+  title: string;
+  subtitle: string;
+  items: AgendaItem[];
+  onDone: (id: string) => void;
+  onPaid: (id: string) => void;
+  onNegotiated: (id: string) => void;
+  onEdit: (item: AgendaItem) => void;
+  onDelete: (id: string) => void;
+}) {
+  const sorted = [...items].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+  return (
+    <div className="rounded-3xl bg-white p-4 shadow-sm">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-xl font-bold">{title}</h3>
+          <p className="text-sm font-medium text-slate-500">{subtitle}</p>
+        </div>
+        <p className="text-sm font-bold text-slate-600">{money.format(sumAgendaAmount(sorted))}</p>
+      </div>
+      {sorted.length === 0 ? (
+        <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">Sin pendientes en este bloque.</p>
+      ) : (
+        <div className="space-y-3">
+          {sorted.map((item) => (
+            <AgendaItemCard
+              key={item.id}
+              item={item}
+              onDone={() => onDone(item.id)}
+              onPaid={() => onPaid(item.id)}
+              onNegotiated={() => onNegotiated(item.id)}
+              onEdit={() => onEdit(item)}
+              onDelete={() => onDelete(item.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AgendaItemCard({
+  item,
+  onDone,
+  onPaid,
+  onNegotiated,
+  onEdit,
+  onDelete
+}: {
+  item: AgendaItem;
+  onDone: () => void;
+  onPaid: () => void;
+  onNegotiated: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-bold">{item.title}</p>
+          <p className="mt-1 text-sm text-slate-600">
+            {item.time} · {agendaTypeLabel(item.type)} · {agendaAreaLabel(item.area)}
+          </p>
+        </div>
+        <p className="shrink-0 font-bold">{item.amount > 0 ? money.format(item.amount) : ""}</p>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <AgendaBadge label={agendaPriorityLabel(item.priority)} tone={priorityTone(item.priority)} />
+        <AgendaBadge label={agendaStatusLabel(item.status)} tone={statusTone(item.status)} />
+      </div>
+      {item.description ? <p className="mt-3 text-sm leading-6 text-slate-600">{item.description}</p> : null}
+      <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-5">
+        <button className="min-h-10 rounded-xl bg-white px-2 text-xs font-bold text-slate-700" onClick={onDone}>
+          Hecho
+        </button>
+        <button className="min-h-10 rounded-xl bg-green-50 px-2 text-xs font-bold text-stable" onClick={onPaid}>
+          Pagado
+        </button>
+        <button className="min-h-10 rounded-xl bg-blue-50 px-2 text-xs font-bold text-blue-700" onClick={onNegotiated}>
+          Negociado
+        </button>
+        <button className="min-h-10 rounded-xl bg-white px-2 text-xs font-bold text-slate-700" onClick={onEdit}>
+          Editar
+        </button>
+        <button className="min-h-10 rounded-xl bg-red-50 px-2 text-xs font-bold text-emergency" onClick={onDelete}>
+          Eliminar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AgendaDrawer({
+  selectedType,
+  editingItem,
+  onClose,
+  onPick,
+  onSave
+}: {
+  selectedType: AgendaType | null;
+  editingItem: AgendaItem | null;
+  onClose: () => void;
+  onPick: (type: AgendaType) => void;
+  onSave: (item: AgendaItem) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-ink/40 px-4 pb-4 lg:items-center lg:justify-center" onClick={onClose}>
+      <div className="max-h-[88vh] w-full overflow-y-auto rounded-3xl bg-white p-4 shadow-soft lg:max-w-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <p className="text-xl font-bold">{editingItem ? "Editar agenda" : selectedType ? "Nuevo registro" : "Agendar"}</p>
+          <button className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100" onClick={onClose} aria-label="Cerrar agenda">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        {!selectedType && !editingItem ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {[
+              ["payment", "Agregar pago"],
+              ["task", "Agregar tarea"],
+              ["debt", "Agregar deuda"],
+              ["subscription", "Agregar suscripcion"],
+              ["pending", "Agregar pendiente"]
+            ].map(([type, label]) => (
+              <button
+                key={type}
+                className="flex min-h-14 items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 text-left font-semibold"
+                onClick={() => onPick(type as AgendaType)}
+              >
+                <Plus className="h-5 w-5" />
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <AgendaItemForm item={editingItem ?? undefined} defaultType={selectedType ?? "task"} onSave={onSave} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AgendaItemForm({ item, defaultType, onSave }: { item?: AgendaItem; defaultType: AgendaType; onSave: (item: AgendaItem) => void }) {
+  const [draft, setDraft] = useState<AgendaItem>(
+    item ?? {
+      id: `agenda-${Date.now()}`,
+      title: "",
+      description: "",
+      date: "2026-05-01",
+      time: "09:00",
+      type: defaultType,
+      area: "shared",
+      amount: 0,
+      priority: defaultType === "payment" || defaultType === "debt" ? "must_pay" : "important",
+      status: "pending",
+      source: "agenda",
+      createdAt: "2026-05-01",
+      updatedAt: "2026-05-01"
+    }
+  );
+
+  function update<K extends keyof AgendaItem>(key: K, value: AgendaItem[K]) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  return (
+    <div className="grid gap-3">
+      <label className="grid gap-1">
+        <span className="text-sm font-semibold text-slate-600">Titulo</span>
+        <input className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.title} onChange={(event) => update("title", event.target.value)} />
+      </label>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="grid gap-1">
+          <span className="text-sm font-semibold text-slate-600">Fecha</span>
+          <input className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" type="date" value={draft.date} onChange={(event) => update("date", event.target.value)} />
+        </label>
+        <label className="grid gap-1">
+          <span className="text-sm font-semibold text-slate-600">Hora</span>
+          <input className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" type="time" value={draft.time} onChange={(event) => update("time", event.target.value)} />
+        </label>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="grid gap-1">
+          <span className="text-sm font-semibold text-slate-600">Tipo</span>
+          <select className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.type} onChange={(event) => update("type", event.target.value as AgendaType)}>
+            {["payment", "task", "debt", "subscription", "reminder", "sale", "pending"].map((value) => (
+              <option key={value} value={value}>{agendaTypeLabel(value as AgendaType)}</option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-1">
+          <span className="text-sm font-semibold text-slate-600">Area</span>
+          <select className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.area} onChange={(event) => update("area", event.target.value as AgendaArea)}>
+            {["home", "maria", "gina", "shared", "botica_spa", "walkme"].map((value) => (
+              <option key={value} value={value}>{agendaAreaLabel(value as AgendaArea)}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="grid gap-1">
+          <span className="text-sm font-semibold text-slate-600">Monto</span>
+          <input className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" inputMode="decimal" value={draft.amount || ""} onChange={(event) => update("amount", Number(event.target.value))} />
+        </label>
+        <label className="grid gap-1">
+          <span className="text-sm font-semibold text-slate-600">Prioridad</span>
+          <select className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.priority} onChange={(event) => update("priority", event.target.value as AgendaPriority)}>
+            {["urgent", "must_pay", "important", "negotiable", "pause", "low"].map((value) => (
+              <option key={value} value={value}>{agendaPriorityLabel(value as AgendaPriority)}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label className="grid gap-1">
+        <span className="text-sm font-semibold text-slate-600">Descripcion</span>
+        <textarea className="min-h-24 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none" value={draft.description} onChange={(event) => update("description", event.target.value)} />
+      </label>
+      <button className="flex min-h-12 items-center justify-center rounded-xl bg-ink px-4 font-semibold text-white disabled:opacity-50" disabled={!draft.title.trim()} onClick={() => onSave({ ...draft, title: draft.title.trim() })}>
+        Guardar
+      </button>
+    </div>
+  );
+}
+
+function BusinessScreen({
+  business,
+  expenses,
+  incomes,
+  setScreen
+}: {
+  business: "Botica Spa" | "Walkme";
+  expenses: Expense[];
+  incomes: Income[];
+  setScreen: (screen: Screen) => void;
+}) {
+  const businessExpenses = expenses.filter((item) => item.business === business);
+  const businessIncomes = incomes.filter((item) => item.business === business);
+  const total = businessExpenses.reduce((sum, item) => sum + item.amount, 0);
+  const incomeTotal = businessIncomes.reduce((sum, item) => sum + item.amount, 0);
+  const personal = businessExpenses.filter((item) => item.paidPersonally).reduce((sum, item) => sum + item.amount, 0);
+  const businessSubscriptions = subscriptions.filter((item) => item.type === business);
+  return (
+    <div className="space-y-4">
+      <StatusHero
+        title={`${business} en atencion`}
+        message={`${business} no ha generado ingresos este mes y tiene gastos activos por revisar.`}
+        value={money.format(total * -1)}
+        subvalue={`Dinero personal usado: ${money.format(personal)}`}
+      />
+      <div className="grid grid-cols-2 gap-3">
+        <MetricCard label="Ingresos" value={money.format(incomeTotal)} />
+        <MetricCard label="Gastos" value={money.format(total)} tone="red" />
+        <MetricCard label="Balance" value={money.format(incomeTotal - total)} tone={incomeTotal - total < 0 ? "red" : "default"} />
+        <MetricCard label="Suscripciones" value={money.format(businessSubscriptions.reduce((sum, item) => sum + item.amount, 0))} />
+      </div>
+      <SectionTitle title="Ingresos registrados" />
+      <div className="space-y-3">
+        {businessIncomes.length === 0 ? (
+          <p className="rounded-2xl bg-white p-4 text-sm text-slate-500">Sin ingresos registrados para {business}.</p>
+        ) : (
+          businessIncomes.map((item) => <InsightRow key={item.id} icon={ArrowUpCircle} label={item.source} value={money.format(item.amount)} />)
+        )}
+      </div>
+      <SectionTitle title="Gastos mas altos" />
+      <div className="space-y-3">
+        {businessExpenses.map((item) => (
+          <InsightRow key={item.name} icon={ReceiptText} label={item.name} value={money.format(item.amount)} tone="red" />
+        ))}
+      </div>
+      <SectionTitle title="Suscripciones asignadas" />
+      <div className="space-y-3">
+        {businessSubscriptions.map((item) => (
+          <InsightRow key={item.name} icon={Bell} label={item.name} value={money.format(item.amount)} tone={item.priority === "Pausar" ? "yellow" : "default"} />
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          className={`min-h-12 rounded-xl px-3 font-semibold ${business === "Botica Spa" ? "bg-ink text-white" : "bg-white text-ink"}`}
+          onClick={() => setScreen("botica")}
+        >
+          Botica Spa
+        </button>
+        <button
+          className={`min-h-12 rounded-xl px-3 font-semibold ${business === "Walkme" ? "bg-ink text-white" : "bg-white text-ink"}`}
+          onClick={() => setScreen("walkme")}
+        >
+          Walkme
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CrisisScreen({
+  totals,
+  setScreen
+}: {
+  totals: ReturnType<typeof useTotalsShape>;
+  setScreen: (screen: Screen) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <StatusHero
+        title="Prioridad de hoy"
+        message="Ordenar pagos importantes, revisar Walkme y pausar suscripciones no necesarias antes de tomar mas deuda."
+        value={money.format(totals.shortfall)}
+        subvalue="Faltante para cubrir el mes"
+      />
+      <CrisisBlock title="Pagar si o si" items={["Renta casa - $14,500", "Pago minimo Tarjeta Gina - $1,900"]} tone="red" />
+      <CrisisBlock title="Negociar" items={["Proveedor Walkme - $4,200", "Municipio 1.20 Walkme - $2,500", "Trino Walkme - $1,750"]} tone="yellow" />
+      <CrisisBlock title="Pausar" items={["Publicidad Botica Spa - $2,800", "Herramienta IA - $600"]} tone="yellow" />
+      <CrisisBlock title="Eliminar" items={["Apps no esenciales - $1,200", "Streaming - $299"]} />
+      <CrisisBlock title="Deudas por atender" items={["Proveedor Walkme esta atrasado", "Tarjeta Gina vence esta semana"]} tone="red" />
+      <CrisisBlock title="Negocio con mayor gasto" items={[`${totals.drainingBusiness} esta usando mas dinero del que genera`]} tone="red" />
+      <CrisisBlock
+        title="Acciones de seguimiento"
+        items={["Negociar proveedor Walkme hoy", "Contactar 10 clientas de Botica Spa", "Cancelar streaming antes del cobro"]}
+        tone="yellow"
+      />
+      <Card>
+        <p className="text-sm font-semibold text-slate-500">Meta minima de ventas</p>
+        <p className="mt-2 text-3xl font-bold">{money.format(totals.weeklySalesGoal)}</p>
+        <p className="mt-2 text-sm text-slate-600">Si no hay ventas esta semana, necesitan generar al menos esta cantidad por fuera.</p>
+        <button className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-ink px-4 py-3 font-semibold text-white" onClick={() => setScreen("planb")}>
+          Abrir Plan B <ChevronRight className="h-4 w-4" />
+        </button>
+      </Card>
+    </div>
+  );
+}
+
+function PlanBScreen({ totals }: { totals: ReturnType<typeof useTotalsShape> }) {
+  const externalNeeded = Math.max(0, settings.monthlySurvivalAmount - settings.availableMoney);
+  return (
+    <div className="space-y-4">
+      <StatusHero
+        title="Plan familiar activo"
+        message={`Con ${money.format(settings.availableMoney)} disponibles y gastos minimos de ${money.format(settings.monthlySurvivalAmount)}, faltan ${money.format(externalNeeded)} para cubrir el mes.`}
+        value={money.format(externalNeeded)}
+        subvalue="Ingreso externo necesario"
+      />
+      <div className="grid grid-cols-2 gap-3">
+        <MetricCard label="Maria podria generar" value={money.format(Math.ceil(externalNeeded / 2))} />
+        <MetricCard label="Gina podria generar" value={money.format(Math.ceil(externalNeeded / 2))} />
+        <MetricCard label="Negocios deben vender" value={money.format(totals.weeklySalesGoal)} />
+        <MetricCard label="Fecha limite" value={`${totals.survivalDays} dias`} tone="red" />
+      </div>
+      <CalmNotice text="Llevan mas de 21 dias sin ingresos. La app sugiere revisar ingresos externos si no hay ventas esta semana." />
+      <MockForm fields={["Ingreso meta de Maria", "Ingreso meta de Gina", "Ingreso meta Botica Spa", "Ingreso meta Walkme", "Gasto minimo de supervivencia", "Tiempo maximo sin ingresos", "Notas"]} />
+      <CrisisBlock title="Antes de buscar mas deuda" items={["Cortar streaming y apps no esenciales", "Pausar publicidad hasta tener ventas", "Negociar proveedor y renta local"]} />
+    </div>
+  );
+}
+
+function FormScreen({
+  intro,
+  fields,
+  listTitle,
+  items
+}: {
+  intro: string;
+  fields: string[];
+  listTitle: string;
+  items: Array<{ title: string; meta: string; amount: number }>;
+}) {
+  return (
+    <div className="space-y-4">
+      <CalmNotice text={intro} />
+      <MockForm fields={fields} />
+      <SectionTitle title={listTitle} />
+      <div className="space-y-3">
+        {items.map((item) => (
+          <Card key={item.title}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">{item.title}</p>
+                <p className="mt-1 text-sm text-slate-500">{item.meta}</p>
+              </div>
+              <p className="font-bold">{money.format(item.amount)}</p>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type SpeechRecognitionResultLike = {
+  readonly 0: { transcript: string };
+};
+type SpeechRecognitionEventLike = {
+  results: {
+    readonly 0: SpeechRecognitionResultLike;
+  };
+};
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  start: () => void;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onend: (() => void) | null;
+};
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+function IncomeEditor({
+  income,
+  defaultType = "Compartido",
+  onSave,
+  onCancel
+}: {
+  income?: Income;
+  defaultType?: IncomeArea;
+  onSave: (income: Income) => void;
+  onCancel?: () => void;
+}) {
+  const [draft, setDraft] = useState<Income>(
+    income ?? {
+      id: `income-${Date.now()}`,
+      date: "2026-05-01",
+      source: "",
+      type: defaultType,
+      amount: 0,
+      account: "Cuenta Maria",
+      method: "Manual",
+      notes: "",
+      business: defaultType === "Botica Spa" || defaultType === "Walkme" ? defaultType : undefined
+    }
+  );
+  const [voiceStatus, setVoiceStatus] = useState("Dicta algo como: venta Botica Spa 1200 por transferencia");
+
+  function update<K extends keyof Income>(key: K, value: Income[K]) {
+    setDraft((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "type") {
+        next.business = value === "Botica Spa" || value === "Walkme" ? value : undefined;
+      }
+      return next;
+    });
+  }
+
+  function applyTranscript(transcript: string) {
+    const amountMatch = transcript.replace(/,/g, "").match(/\$?\s*(\d+(?:\.\d+)?)/);
+    const amount = amountMatch ? Number(amountMatch[1]) : draft.amount;
+    const normalized = transcript.toLowerCase();
+    const type: IncomeArea = normalized.includes("botica")
+      ? "Botica Spa"
+      : normalized.includes("walkme")
+        ? "Walkme"
+        : normalized.includes("gina")
+          ? "Personal Gina"
+          : normalized.includes("maria") || normalized.includes("maría")
+            ? "Personal Maria"
+            : draft.type;
+    const method = normalized.includes("transfer") ? "Transferencia" : normalized.includes("efectivo") ? "Efectivo" : draft.method;
+
+    setDraft((current) => ({
+      ...current,
+      source: current.source || transcript,
+      amount,
+      type,
+      business: type === "Botica Spa" || type === "Walkme" ? type : undefined,
+      method,
+      notes: current.notes ? `${current.notes}\nVoz: ${transcript}` : `Voz: ${transcript}`
+    }));
+  }
+
+  function startVoice() {
+    const speechWindow = window as Window & {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    };
+    const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!Recognition) {
+      setVoiceStatus("Este navegador no permite dictado por voz aqui. Puedes escribirlo manualmente.");
+      return;
+    }
+
+    const recognition = new Recognition();
+    recognition.lang = "es-MX";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      applyTranscript(transcript);
+      setVoiceStatus(`Voz capturada: ${transcript}`);
+    };
+    recognition.onend = () => setVoiceStatus("Dictado terminado.");
+    setVoiceStatus("Escuchando...");
+    recognition.start();
+  }
+
+  function attachFile(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+    const isPdf = file.type === "application/pdf";
+    const isImage = file.type.startsWith("image/");
+    update("attachmentName", file.name);
+    update("attachmentType", isPdf ? "pdf" : "image");
+    update("attachmentUrl", isImage ? URL.createObjectURL(file) : undefined);
+  }
+
+  function submit() {
+    if (!draft.source.trim()) {
+      return;
+    }
+    onSave({
+      ...draft,
+      source: draft.source.trim(),
+      amount: Number.isFinite(draft.amount) ? draft.amount : 0,
+      business: draft.type === "Botica Spa" || draft.type === "Walkme" ? draft.type : undefined
+    });
+    if (!income) {
+      setDraft({
+        id: `income-${Date.now() + 1}`,
+        date: "2026-05-01",
+        source: "",
+        type: defaultType,
+        amount: 0,
+        account: "Cuenta Maria",
+        method: "Manual",
+        notes: "",
+        business: defaultType === "Botica Spa" || defaultType === "Walkme" ? defaultType : undefined
+      });
+    }
+  }
+
+  return (
+    <Card>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="font-semibold">{income ? "Editar ingreso" : "Agregar ingreso"}</p>
+        <button className="flex min-h-10 items-center gap-2 rounded-xl bg-slate-100 px-3 text-sm font-semibold text-slate-700" onClick={startVoice}>
+          <Mic className="h-4 w-4" />
+          Voz
+        </button>
+      </div>
+      <p className="mb-3 rounded-xl bg-slate-50 p-3 text-xs font-medium text-slate-600">{voiceStatus}</p>
+      <div className="grid gap-3">
+        <label className="grid gap-1">
+          <span className="text-sm font-medium text-slate-600">Fuente</span>
+          <input
+            className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+            value={draft.source}
+            onChange={(event) => update("source", event.target.value)}
+            placeholder="Ej. Venta Botica Spa"
+          />
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="grid gap-1">
+            <span className="text-sm font-medium text-slate-600">Monto</span>
+            <input
+              className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+              inputMode="decimal"
+              value={draft.amount || ""}
+              onChange={(event) => update("amount", Number(event.target.value))}
+              placeholder="0"
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-sm font-medium text-slate-600">Tipo</span>
+            <select
+              className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+              value={draft.type}
+              onChange={(event) => update("type", event.target.value as IncomeArea)}
+            >
+              {["Compartido", "Botica Spa", "Walkme", "Personal Maria", "Personal Gina", "Prestamo", "Apoyo familiar", "Reembolso", "Otro"].map((area) => (
+                <option key={area} value={area}>
+                  {area}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="grid gap-1">
+            <span className="text-sm font-medium text-slate-600">Fecha</span>
+            <input
+              className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+              type="date"
+              value={draft.date}
+              onChange={(event) => update("date", event.target.value)}
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-sm font-medium text-slate-600">Metodo</span>
+            <select
+              className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+              value={draft.method}
+              onChange={(event) => update("method", event.target.value)}
+            >
+              {["Manual", "Efectivo", "Transferencia", "Tarjeta", "Deposito", "Otro"].map((method) => (
+                <option key={method} value={method}>
+                  {method}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label className="grid gap-1">
+          <span className="text-sm font-medium text-slate-600">Cuenta destino</span>
+          <select
+            className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+            value={draft.account}
+            onChange={(event) => update("account", event.target.value)}
+          >
+            {accounts.map((account) => (
+              <option key={account.name} value={account.name}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-1">
+          <span className="text-sm font-medium text-slate-600">Factura o comprobante</span>
+          <input
+            className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm"
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={(event) => attachFile(event.target.files?.[0])}
+          />
+        </label>
+        {draft.attachmentName ? (
+          <AttachmentPreview name={draft.attachmentName} type={draft.attachmentType ?? "pdf"} url={draft.attachmentUrl} />
+        ) : null}
+        <label className="grid gap-1">
+          <span className="text-sm font-medium text-slate-600">Notas</span>
+          <textarea
+            className="min-h-24 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none focus:border-slate-400"
+            value={draft.notes}
+            onChange={(event) => update("notes", event.target.value)}
+            placeholder="Notas breves"
+          />
+        </label>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        {onCancel ? (
+          <button className="flex min-h-12 items-center justify-center rounded-xl bg-slate-100 px-4 font-semibold text-slate-700" onClick={onCancel}>
+            Cancelar
+          </button>
+        ) : null}
+        <button
+          className={`${onCancel ? "" : "col-span-2"} flex min-h-12 items-center justify-center gap-2 rounded-xl bg-ink px-4 font-semibold text-white disabled:opacity-50`}
+          onClick={submit}
+          disabled={!draft.source.trim()}
+        >
+          <Save className="h-4 w-4" />
+          {income ? "Guardar cambios" : "Agregar ingreso"}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+function IncomeItemCard({ income, onEdit, onDelete }: { income: Income; onEdit: () => void; onDelete: () => void }) {
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold">{income.source}</p>
+          <p className="mt-1 text-sm text-slate-500">
+            {income.date} - {income.method}
+          </p>
+        </div>
+        <p className="shrink-0 font-bold text-stable">{money.format(income.amount)}</p>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <SmallInfo icon={Wallet} label="Cuenta" value={income.account} />
+        <SmallInfo icon={FileText} label="Comprobante" value={income.attachmentName ? "Adjunto" : "Sin archivo"} />
+      </div>
+      {income.attachmentName ? <AttachmentPreview name={income.attachmentName} type={income.attachmentType ?? "pdf"} url={income.attachmentUrl} /> : null}
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 px-3 font-semibold text-slate-700" onClick={onEdit}>
+          <Pencil className="h-4 w-4" />
+          Editar
+        </button>
+        <button className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-red-50 px-3 font-semibold text-emergency" onClick={onDelete}>
+          <Trash2 className="h-4 w-4" />
+          Borrar
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+function AttachmentPreview({ name, type, url }: { name: string; type: "image" | "pdf"; url?: string }) {
+  return (
+    <div className="mt-3 rounded-xl bg-slate-50 p-3">
+      <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+        {type === "image" ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+        <span className="min-w-0 truncate">{name}</span>
+      </div>
+      {type === "image" && url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="mt-3 max-h-48 w-full rounded-xl object-cover" src={url} alt={name} />
+      ) : null}
+      {type === "pdf" ? <p className="mt-2 text-xs text-slate-500">PDF listo para guardarse cuando conectemos almacenamiento.</p> : null}
+    </div>
+  );
+}
+
+function ExpenseEditor({
+  expense,
+  defaultType = "Casa",
+  onSave,
+  onCancel
+}: {
+  expense?: Expense;
+  defaultType?: ExpenseArea;
+  onSave: (expense: Expense) => void;
+  onCancel?: () => void;
+}) {
+  const [draft, setDraft] = useState<Expense>(
+    expense ?? {
+      id: `expense-${Date.now()}`,
+      date: "2026-05-01",
+      name: "",
+      amount: 0,
+      type: defaultType,
+      category: "",
+      priority: "important",
+      paidBy: "Compartido",
+      due: "2026-05-01",
+      paidPersonally: false,
+      business: defaultType === "Botica Spa" || defaultType === "Walkme" ? defaultType : undefined
+    }
+  );
+
+  function update<K extends keyof Expense>(key: K, value: Expense[K]) {
+    setDraft((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "type") {
+        next.business = value === "Botica Spa" || value === "Walkme" ? value : undefined;
+      }
+      return next;
+    });
+  }
+
+  function submit() {
+    if (!draft.name.trim()) {
+      return;
+    }
+    onSave({
+      ...draft,
+      name: draft.name.trim(),
+      category: draft.category.trim() || "Sin categoria",
+      amount: Number.isFinite(draft.amount) ? draft.amount : 0,
+      business: draft.type === "Botica Spa" || draft.type === "Walkme" ? draft.type : undefined
+    });
+    if (!expense) {
+      setDraft({
+        id: `expense-${Date.now() + 1}`,
+        date: "2026-05-01",
+        name: "",
+        amount: 0,
+        type: defaultType,
+        category: "",
+        priority: "important",
+        paidBy: "Compartido",
+        due: "2026-05-01",
+        paidPersonally: false,
+        business: defaultType === "Botica Spa" || defaultType === "Walkme" ? defaultType : undefined
+      });
+    }
+  }
+
+  function attachFile(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+    const isPdf = file.type === "application/pdf";
+    const isImage = file.type.startsWith("image/");
+    update("attachmentName", file.name);
+    update("attachmentType", isPdf ? "pdf" : "image");
+    update("attachmentUrl", isImage ? URL.createObjectURL(file) : undefined);
+  }
+
+  return (
+    <Card>
+      <p className="mb-3 font-semibold">{expense ? "Editar gasto" : "Agregar gasto"}</p>
+      <div className="grid gap-3">
+        <label className="grid gap-1">
+          <span className="text-sm font-medium text-slate-600">Nombre del gasto</span>
+          <input
+            className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+            value={draft.name}
+            onChange={(event) => update("name", event.target.value)}
+            placeholder="Ej. Renta Walkme"
+          />
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="grid gap-1">
+            <span className="text-sm font-medium text-slate-600">Monto</span>
+            <input
+              className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+              inputMode="decimal"
+              value={draft.amount || ""}
+              onChange={(event) => update("amount", Number(event.target.value))}
+              placeholder="0"
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-sm font-medium text-slate-600">Area</span>
+            <select
+              className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+              value={draft.type}
+              onChange={(event) => update("type", event.target.value as ExpenseArea)}
+            >
+              {["Casa", "Botica Spa", "Walkme", "Compartido", "Personal Maria", "Personal Gina", "Deuda", "Suscripcion", "Emergencia", "Otro"].map((area) => (
+                <option key={area} value={area}>
+                  {area}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="grid gap-1">
+            <span className="text-sm font-medium text-slate-600">Categoria</span>
+            <input
+              className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+              value={draft.category}
+              onChange={(event) => update("category", event.target.value)}
+              placeholder="Servicios"
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-sm font-medium text-slate-600">Prioridad</span>
+            <select
+              className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+              value={draft.priority}
+              onChange={(event) => update("priority", event.target.value as Priority)}
+            >
+              <option value="must_pay">Pagar si o si</option>
+              <option value="important">Importante</option>
+              <option value="negotiable">Negociable</option>
+              <option value="pause">Pausar</option>
+              <option value="eliminate">Eliminar</option>
+            </select>
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="grid gap-1">
+            <span className="text-sm font-medium text-slate-600">Quien pago</span>
+            <select
+              className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+              value={draft.paidBy}
+              onChange={(event) => update("paidBy", event.target.value)}
+            >
+              {["Maria", "Gina", "Compartido", "Ahorros", "Tarjeta Gina", "Cuenta Botica Spa", "Cuenta Walkme", "Efectivo"].map((payer) => (
+                <option key={payer} value={payer}>
+                  {payer}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1">
+            <span className="text-sm font-medium text-slate-600">Fecha limite</span>
+            <input
+              className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+              type="date"
+              value={draft.due}
+              onChange={(event) => update("due", event.target.value)}
+            />
+          </label>
+        </div>
+        <label className="flex min-h-12 items-center gap-3 rounded-xl bg-slate-50 px-3 text-sm font-medium text-slate-700">
+          <input
+            type="checkbox"
+            checked={Boolean(draft.paidPersonally)}
+            onChange={(event) => update("paidPersonally", event.target.checked)}
+          />
+          Es gasto de negocio pagado con dinero personal
+        </label>
+        <label className="grid gap-1">
+          <span className="text-sm font-medium text-slate-600">Factura o comprobante</span>
+          <input
+            className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm"
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={(event) => attachFile(event.target.files?.[0])}
+          />
+        </label>
+        {draft.attachmentName ? (
+          <AttachmentPreview name={draft.attachmentName} type={draft.attachmentType ?? "pdf"} url={draft.attachmentUrl} />
+        ) : null}
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        {onCancel ? (
+          <button className="flex min-h-12 items-center justify-center rounded-xl bg-slate-100 px-4 font-semibold text-slate-700" onClick={onCancel}>
+            Cancelar
+          </button>
+        ) : null}
+        <button
+          className={`${onCancel ? "" : "col-span-2"} flex min-h-12 items-center justify-center gap-2 rounded-xl bg-ink px-4 font-semibold text-white disabled:opacity-50`}
+          onClick={submit}
+          disabled={!draft.name.trim()}
+        >
+          <Save className="h-4 w-4" />
+          {expense ? "Guardar cambios" : "Agregar gasto"}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+function ExpenseItemCard({ expense, onEdit, onDelete }: { expense: Expense; onEdit: () => void; onDelete: () => void }) {
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold">{expense.name}</p>
+          <p className="mt-1 text-sm text-slate-500">
+            {expense.category} - {priorityLabel(expense.priority)}
+          </p>
+        </div>
+        <p className="shrink-0 font-bold">{money.format(expense.amount)}</p>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <SmallInfo icon={UserRound} label="Pago" value={expense.paidBy} />
+        <SmallInfo icon={CalendarClock} label="Vence" value={expense.due} />
+      </div>
+      {expense.paidPersonally ? (
+        <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm font-medium text-emergency">Sale de dinero personal para negocio.</p>
+      ) : null}
+      {expense.attachmentName ? (
+        <AttachmentPreview name={expense.attachmentName} type={expense.attachmentType ?? "pdf"} url={expense.attachmentUrl} />
+      ) : null}
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 px-3 font-semibold text-slate-700" onClick={onEdit}>
+          <Pencil className="h-4 w-4" />
+          Editar
+        </button>
+        <button className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-red-50 px-3 font-semibold text-emergency" onClick={onDelete}>
+          <Trash2 className="h-4 w-4" />
+          Borrar
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+function MockForm({ fields }: { fields: string[] }) {
+  return (
+    <Card>
+      <p className="mb-3 font-semibold">Captura manual</p>
+      <div className="grid gap-3">
+        {fields.map((field) => (
+          <label key={field} className="grid gap-1">
+            <span className="text-sm font-medium text-slate-600">{field}</span>
+            {field === "Notas" ? (
+              <textarea className="min-h-24 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none focus:border-slate-400" placeholder="Escribe una nota breve" />
+            ) : (
+              <input className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400" placeholder={field} />
+            )}
+          </label>
+        ))}
+      </div>
+      <button className="mt-4 flex min-h-12 w-full items-center justify-center rounded-xl bg-ink px-4 font-semibold text-white">
+        Guardar registro mock
+      </button>
+    </Card>
+  );
+}
+
+function AreaFilterTabs({
+  areas,
+  selected,
+  totals,
+  onSelect
+}: {
+  areas: string[];
+  selected: string;
+  totals: Record<string, number>;
+  onSelect: (area: string) => void;
+}) {
+  const totalAll = Object.values(totals).reduce((sum, value) => sum + value, 0);
+
+  return (
+    <div className="space-y-3">
+      <div className="no-scrollbar flex gap-2 overflow-x-auto">
+        {areas.map((area) => {
+          const isSelected = selected === area;
+          const value = area === "Todos" ? totalAll : totals[area] ?? 0;
+          return (
+            <button
+              key={area}
+              className={`min-w-[128px] rounded-2xl border p-3 text-left shadow-sm ${
+                isSelected ? "border-ink bg-ink text-white" : "border-slate-100 bg-white text-ink"
+              }`}
+              onClick={() => onSelect(area)}
+            >
+              <span className={`block text-xs font-semibold ${isSelected ? "text-white/75" : "text-slate-500"}`}>{area}</span>
+              <span className="mt-1 block text-lg font-bold">{money.format(value)}</span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="rounded-2xl bg-white p-3 text-sm text-slate-600 shadow-sm">
+        Viendo: <span className="font-bold text-ink">{selected}</span>. Agregar, editar o borrar aqui solo afecta esta lista.
+      </p>
+    </div>
+  );
+}
+
+function GoogleSheetsImportCard() {
+  return (
+    <Card>
+      <div className="flex items-start gap-3">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-green-50 text-stable">
+          <FileText className="h-5 w-5" />
+        </span>
+        <div>
+          <p className="font-semibold">Importar desde Google Sheets</p>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            Preparado para conectar una hoja con columnas como fecha, nombre, monto, negocio, categoria, prioridad y comprobante.
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3">
+        <input
+          className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+          placeholder="Pega aqui el link de Google Sheets"
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <button className="min-h-11 rounded-xl bg-slate-100 px-3 text-sm font-semibold text-slate-700">
+            Conectar
+          </button>
+          <button className="min-h-11 rounded-xl bg-ink px-3 text-sm font-semibold text-white">
+            Importar mock
+          </button>
+        </div>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-slate-500">
+        En esta fase es visual. Para hacerlo real conectaremos Google API o un CSV exportado de Sheets y guardaremos los archivos en Supabase Storage.
+      </p>
+    </Card>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return <p className="rounded-2xl bg-white p-4 text-sm text-slate-500 shadow-sm">{text}</p>;
+}
+
+function StatusHero({ title, message, value, subvalue }: { title: string; message: string; value: string; subvalue: string }) {
+  return (
+    <section className="rounded-3xl bg-emergency p-5 text-white shadow-soft">
+      <div className="mb-5 flex items-center gap-2">
+        <AlertTriangle className="h-5 w-5" />
+        <p className="font-semibold">{title}</p>
+      </div>
+      <p className="text-4xl font-bold tracking-normal">{value}</p>
+      <p className="mt-2 font-medium text-red-50">{subvalue}</p>
+      <p className="mt-4 text-sm leading-6 text-red-50">{message}</p>
+    </section>
+  );
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  return <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">{children}</div>;
+}
+
+function MetricCard({ label, value, tone = "default", compact = false }: { label: string; value: string; tone?: "default" | "red"; compact?: boolean }) {
+  return (
+    <div className={`rounded-2xl border border-slate-100 bg-white ${compact ? "p-3" : "p-4"} shadow-sm`}>
+      <p className="text-sm font-medium text-slate-500">{label}</p>
+      <p className={`mt-2 font-bold tracking-normal ${compact ? "text-xl" : "text-2xl"} ${tone === "red" ? "text-emergency" : "text-ink"}`}>{value}</p>
+    </div>
+  );
+}
+
+function SectionTitle({ title, action, onClick }: { title: string; action?: string; onClick?: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3 pt-1">
+      <h2 className="text-lg font-bold">{title}</h2>
+      {action ? (
+        <button className="text-sm font-semibold text-slate-600" onClick={onClick}>
+          {action}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function InsightRow({ icon: Icon, label, value, tone = "default" }: { icon: React.ElementType; label: string; value: string; tone?: "default" | "red" | "yellow" }) {
+  const toneClass = tone === "red" ? "text-emergency" : tone === "yellow" ? "text-alert" : "text-ink";
+  return (
+    <div className="flex min-h-16 items-center gap-3 rounded-2xl bg-white p-3 shadow-sm">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100">
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-slate-500">{label}</p>
+        <p className={`truncate font-bold ${toneClass}`}>{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function AreaButton({ label, value, icon: Icon, onClick }: { label: string; value: string; icon: React.ElementType; onClick?: () => void }) {
+  return (
+    <button className="flex min-h-16 items-center gap-3 rounded-2xl bg-white p-3 text-left shadow-sm" onClick={onClick}>
+      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100">
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className="flex-1">
+        <span className="block font-semibold">{label}</span>
+        <span className="text-sm text-slate-500">{value} este mes</span>
+      </span>
+      <ChevronRight className="h-5 w-5 text-slate-400" />
+    </button>
+  );
+}
+
+function CalmNotice({ text }: { text: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-sm">
+      {text}
+    </div>
+  );
+}
+
+function DebtCard({ debt }: { debt: (typeof debts)[number] }) {
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold">{debt.name}</p>
+          <p className="text-sm text-slate-500">{debt.creditor} - vence {debt.due}</p>
+        </div>
+        <StatusPill label={debt.status} tone={debt.status === "Atrasada" ? "red" : "yellow"} />
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <MetricCard label="Total" value={money.format(debt.total)} compact />
+        <MetricCard label="Pago minimo" value={money.format(debt.minimum)} compact />
+      </div>
+    </Card>
+  );
+}
+
+function PaymentCard({ payment }: { payment: (typeof upcomingPayments)[number] }) {
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold">{payment.name}</p>
+          <p className="text-sm text-slate-500">{payment.type} - {payment.due}</p>
+        </div>
+        <p className="font-bold">{money.format(payment.amount)}</p>
+      </div>
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        {["Pagado", "Negociado", "Pausado"].map((action) => (
+          <button key={action} className="min-h-10 rounded-xl bg-slate-100 px-2 text-xs font-semibold text-slate-700">
+            {action}
+          </button>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function AgendaBadge({ label, tone }: { label: string; tone: "red" | "strongRed" | "yellow" | "green" | "blue" | "gray" }) {
+  const classes = {
+    red: "bg-red-50 text-emergency",
+    strongRed: "bg-red-100 text-red-800",
+    yellow: "bg-amber-50 text-alert",
+    green: "bg-green-50 text-stable",
+    blue: "bg-blue-50 text-blue-700",
+    gray: "bg-slate-200 text-slate-700"
+  };
+  return <span className={`rounded-full px-3 py-1 text-xs font-bold ${classes[tone]}`}>{label}</span>;
+}
+
+function agendaTypeLabel(type: AgendaType) {
+  const labels: Record<AgendaType, string> = {
+    payment: "Pago",
+    task: "Tarea",
+    debt: "Deuda",
+    subscription: "Suscripcion",
+    reminder: "Recordatorio",
+    sale: "Venta",
+    pending: "Pendiente"
+  };
+  return labels[type];
+}
+
+function agendaAreaLabel(area: AgendaArea) {
+  const labels: Record<AgendaArea, string> = {
+    home: "Casa",
+    maria: "Maria",
+    gina: "Gina",
+    shared: "Compartido",
+    botica_spa: "Botica Spa",
+    walkme: "Walkme"
+  };
+  return labels[area];
+}
+
+function agendaPriorityLabel(priority: AgendaPriority) {
+  const labels: Record<AgendaPriority, string> = {
+    urgent: "Urgente",
+    must_pay: "Pagar si o si",
+    important: "Importante",
+    negotiable: "Negociable",
+    pause: "Pausar",
+    low: "Baja"
+  };
+  return labels[priority];
+}
+
+function agendaStatusLabel(status: AgendaStatus) {
+  const labels: Record<AgendaStatus, string> = {
+    pending: "Pendiente",
+    done: "Hecho",
+    paid: "Pagado",
+    overdue: "Atrasado",
+    negotiated: "Negociado",
+    paused: "Pausado"
+  };
+  return labels[status];
+}
+
+function priorityTone(priority: AgendaPriority) {
+  if (priority === "urgent" || priority === "must_pay") return "red";
+  if (priority === "important" || priority === "negotiable") return "yellow";
+  return "gray";
+}
+
+function statusTone(status: AgendaStatus) {
+  if (status === "overdue") return "strongRed";
+  if (status === "paid" || status === "done") return "green";
+  if (status === "negotiated") return "blue";
+  if (status === "paused") return "gray";
+  return "gray";
+}
+
+function FollowUpCard({ item }: { item: (typeof followUps)[number] }) {
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold">{item.name}</p>
+          <p className="mt-1 text-sm text-slate-500">
+            {item.area} - {item.owner}
+          </p>
+        </div>
+        <StatusPill label={item.status} tone={item.status === "Contactar hoy" ? "red" : item.status === "Esperando respuesta" ? "yellow" : "green"} />
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <SmallInfo icon={CircleDollarSign} label="Valor" value={item.value} />
+        <SmallInfo icon={Clock3} label="Siguiente" value={item.next} />
+      </div>
+    </Card>
+  );
+}
+
+function SmallInfo({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-slate-50 p-3">
+      <div className="mb-2 flex items-center gap-2 text-slate-500">
+        <Icon className="h-4 w-4" />
+        <span className="text-xs font-semibold">{label}</span>
+      </div>
+      <p className="text-sm font-bold">{value}</p>
+    </div>
+  );
+}
+
+function CrisisBlock({ title, items, tone = "default" }: { title: string; items: string[]; tone?: "default" | "red" | "yellow" }) {
+  const border = tone === "red" ? "border-red-200" : tone === "yellow" ? "border-amber-200" : "border-slate-100";
+  return (
+    <div className={`rounded-2xl border ${border} bg-white p-4 shadow-sm`}>
+      <p className="mb-3 font-bold">{title}</p>
+      <div className="space-y-2">
+        {items.map((item) => (
+          <div key={item} className="flex items-start gap-2 text-sm text-slate-700">
+            <CircleDollarSign className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+            <span>{item}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StatusPill({ label, tone }: { label: string; tone: "red" | "yellow" | "green" }) {
+  const classes = {
+    red: "bg-red-50 text-emergency",
+    yellow: "bg-amber-50 text-alert",
+    green: "bg-green-50 text-stable"
+  };
+  return <span className={`rounded-full px-3 py-1 text-xs font-bold ${classes[tone]}`}>{label}</span>;
+}
+
+function titleFor(screen: Screen) {
+  const titles: Record<Screen, string> = {
+    dashboard: "Dashboard",
+    incomes: "Ingresos",
+    expenses: "Egresos",
+    accounts: "Cuentas",
+    debts: "Deudas",
+    subscriptions: "Suscripciones",
+    payments: "Pagos proximos",
+    agenda: "Agenda",
+    botica: "Botica Spa",
+    walkme: "Walkme",
+    crisis: "Prioridades",
+    planb: "Plan familiar"
+  };
+  return titles[screen];
+}
+
+function useTotalsShape() {
+  return {
+    monthIncome: 0,
+    monthExpenses: 0,
+    balance: 0,
+    shortfall: 0,
+    survivalDays: 0,
+    personalBusiness: 0,
+    boticaExpenses: 0,
+    walkmeExpenses: 0,
+    homeExpenses: 0,
+    boticaIncome: 0,
+    walkmeIncome: 0,
+    weeklySalesGoal: 0,
+    drainingBusiness: ""
+  };
+}
+
+export default AppShell;
