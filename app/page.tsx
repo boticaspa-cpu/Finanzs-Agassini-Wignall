@@ -712,7 +712,7 @@ function AppShell() {
 
   return (
     <main className="min-h-screen bg-calm text-ink lg:flex">
-      <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white px-5 py-6 lg:block">
+      <aside className="hidden w-72 shrink-0 border-r border-green-900/10 bg-white px-5 py-6 lg:block">
         <div className="mb-7">
           <p className="text-sm font-semibold text-slate-500">Control 30</p>
           <p className="mt-1 text-2xl font-bold">Claridad financiera</p>
@@ -722,7 +722,7 @@ function AppShell() {
             <button
               key={item.id}
               className={`flex min-h-12 w-full items-center gap-3 rounded-2xl px-4 text-left font-semibold ${
-                screen === item.id ? "bg-ink text-white" : "text-slate-600 hover:bg-slate-50"
+                screen === item.id ? "bg-ink text-white" : "text-slate-600 hover:bg-green-50"
               }`}
               onClick={() => setScreen(item.id)}
             >
@@ -732,7 +732,7 @@ function AppShell() {
           ))}
         </div>
         <button
-          className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-emergency px-4 font-semibold text-white"
+          className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-olive px-4 font-semibold text-white"
           onClick={() => setScreen("planb")}
         >
           <BriefcaseBusiness className="h-5 w-5" />
@@ -747,7 +747,7 @@ function AppShell() {
       </aside>
 
       <div className="min-w-0 flex-1 pb-28 lg:pb-0">
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-calm/95 px-5 pb-3 pt-5 backdrop-blur lg:px-8">
+      <header className="sticky top-0 z-20 border-b border-green-900/10 bg-calm/95 px-5 pb-3 pt-5 backdrop-blur lg:px-8">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-medium text-slate-500">Control 30</p>
@@ -1080,7 +1080,7 @@ function ExpenseScreen({
     <div className="space-y-4">
       <CalmNotice text="Los gastos ahora se separan por area y negocio. Puedes agregar, editar o borrar registros; por ahora se guardan solo mientras la app esta abierta." />
       <div className="grid grid-cols-2 gap-3">
-        <MetricCard label="Total egresos" value={money.format(total)} tone="red" />
+        <MetricCard label="Total egresos" value={money.format(total)} />
         <MetricCard label="Registros" value={`${expenses.length}`} />
       </div>
       <AreaFilterTabs
@@ -1891,7 +1891,7 @@ function AreaDetailScreen({
       />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard label="Ingresos" value={money.format(incomeTotal)} />
-        <MetricCard label="Gastos" value={money.format(total)} tone="red" />
+        <MetricCard label="Gastos" value={money.format(total)} />
         <MetricCard label="Balance" value={money.format(incomeTotal - total)} tone={incomeTotal - total < 0 ? "red" : "default"} />
         <MetricCard label="Presupuesto" value={money.format(budgetTotal)} />
       </div>
@@ -1925,12 +1925,12 @@ function AreaDetailScreen({
       <SectionTitle title="Gastos mas altos" />
       <div className="space-y-3">
         {areaExpenses.map((item) => (
-          <InsightRow key={item.name} icon={ReceiptText} label={item.name} value={money.format(item.amount)} tone="red" />
+          <InsightRow key={item.name} icon={ReceiptText} label={item.name} value={money.format(item.amount)} />
         ))}
       </div>
 
       <SectionTitle title="Categoria con mas gasto" />
-      <InsightRow icon={ReceiptText} label={topCategory.label} value={money.format(topCategory.amount)} tone={topCategory.amount > 0 ? "red" : "default"} />
+      <InsightRow icon={ReceiptText} label={topCategory.label} value={money.format(topCategory.amount)} />
 
       <SectionTitle title="Suscripciones asignadas" />
       <div className="space-y-3">
@@ -2583,7 +2583,7 @@ function ExpenseItemCard({ expense, onEdit, onDelete }: { expense: Expense; onEd
         <SmallInfo icon={CalendarClock} label="Vence" value={expense.due} />
       </div>
       {expense.paidPersonally ? (
-        <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm font-medium text-emergency">Sale de dinero personal para negocio.</p>
+        <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-medium text-alert">Sale de dinero personal para negocio.</p>
       ) : null}
       {expense.attachmentName ? (
         <AttachmentPreview name={expense.attachmentName} type={expense.attachmentType ?? "pdf"} url={expense.attachmentUrl} />
@@ -2706,25 +2706,25 @@ function EmptyState({ text }: { text: string }) {
 
 function StatusHero({ title, message, value, subvalue }: { title: string; message: string; value: string; subvalue: string }) {
   return (
-    <section className="rounded-3xl bg-emergency p-5 text-white shadow-soft">
+    <section className="rounded-3xl bg-ink p-5 text-white shadow-soft">
       <div className="mb-5 flex items-center gap-2">
-        <AlertTriangle className="h-5 w-5" />
+        <AlertTriangle className="h-5 w-5 text-amber-100" />
         <p className="font-semibold">{title}</p>
       </div>
       <p className="text-4xl font-bold tracking-normal">{value}</p>
-      <p className="mt-2 font-medium text-red-50">{subvalue}</p>
-      <p className="mt-4 text-sm leading-6 text-red-50">{message}</p>
+      <p className="mt-2 font-medium text-green-50">{subvalue}</p>
+      <p className="mt-4 text-sm leading-6 text-green-50">{message}</p>
     </section>
   );
 }
 
 function Card({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">{children}</div>;
+  return <div className="rounded-2xl border border-green-900/10 bg-white p-4 shadow-sm">{children}</div>;
 }
 
 function MetricCard({ label, value, tone = "default", compact = false }: { label: string; value: string; tone?: "default" | "red"; compact?: boolean }) {
   return (
-    <div className={`rounded-2xl border border-slate-100 bg-white ${compact ? "p-3" : "p-4"} shadow-sm`}>
+    <div className={`rounded-2xl border border-green-900/10 bg-white ${compact ? "p-3" : "p-4"} shadow-sm`}>
       <p className="text-sm font-medium text-slate-500">{label}</p>
       <p className={`mt-2 font-bold tracking-normal ${compact ? "text-xl" : "text-2xl"} ${tone === "red" ? "text-emergency" : "text-ink"}`}>{value}</p>
     </div>
@@ -2748,7 +2748,7 @@ function InsightRow({ icon: Icon, label, value, tone = "default" }: { icon: Reac
   const toneClass = tone === "red" ? "text-emergency" : tone === "yellow" ? "text-alert" : "text-ink";
   return (
     <div className="flex min-h-16 items-center gap-3 rounded-2xl bg-white p-3 shadow-sm">
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-green-50 text-ink">
         <Icon className="h-5 w-5" />
       </span>
       <div className="min-w-0 flex-1">
@@ -2762,7 +2762,7 @@ function InsightRow({ icon: Icon, label, value, tone = "default" }: { icon: Reac
 function AreaButton({ label, value, icon: Icon, onClick }: { label: string; value: string; icon: React.ElementType; onClick?: () => void }) {
   return (
     <button className="flex min-h-16 items-center gap-3 rounded-2xl bg-white p-3 text-left shadow-sm" onClick={onClick}>
-      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100">
+      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-green-50 text-ink">
         <Icon className="h-5 w-5" />
       </span>
       <span className="flex-1">
@@ -2776,7 +2776,7 @@ function AreaButton({ label, value, icon: Icon, onClick }: { label: string; valu
 
 function CalmNotice({ text }: { text: string }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-sm">
+    <div className="rounded-2xl border border-green-900/10 bg-white p-4 text-sm leading-6 text-slate-700 shadow-sm">
       {text}
     </div>
   );
@@ -2929,7 +2929,7 @@ function SmallInfo({ icon: Icon, label, value }: { icon: React.ElementType; labe
 }
 
 function CrisisBlock({ title, items, tone = "default" }: { title: string; items: string[]; tone?: "default" | "red" | "yellow" }) {
-  const border = tone === "red" ? "border-red-200" : tone === "yellow" ? "border-amber-200" : "border-slate-100";
+  const border = tone === "red" ? "border-red-200" : tone === "yellow" ? "border-amber-200" : "border-green-900/10";
   return (
     <div className={`rounded-2xl border ${border} bg-white p-4 shadow-sm`}>
       <p className="mb-3 font-bold">{title}</p>
