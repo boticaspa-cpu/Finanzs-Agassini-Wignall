@@ -45,6 +45,7 @@ type Screen =
   | "payments"
   | "agenda"
   | "budget"
+  | "home"
   | "botica"
   | "walkme"
   | "crisis"
@@ -604,7 +605,7 @@ const followUps = [
 const navItems = [
   { id: "dashboard" as Screen, label: "Inicio", icon: LayoutDashboard },
   { id: "agenda" as Screen, label: "Agenda", icon: CalendarDays },
-  { id: "expenses" as Screen, label: "Gastos", icon: ReceiptText },
+  { id: "home" as Screen, label: "Casa", icon: Home },
   { id: "budget" as Screen, label: "Presup.", icon: PiggyBank },
   { id: "botica" as Screen, label: "Negocios", icon: Store }
 ];
@@ -781,8 +782,9 @@ function AppShell() {
         {screen === "subscriptions" && <SubscriptionsScreen />}
         {screen === "payments" && <PaymentsScreen />}
         {screen === "agenda" && <AgendaScreen />}
-        {screen === "botica" && <BusinessScreen business="Botica Spa" expenses={expenses} incomes={incomes} setScreen={setScreen} />}
-        {screen === "walkme" && <BusinessScreen business="Walkme" expenses={expenses} incomes={incomes} setScreen={setScreen} />}
+        {screen === "home" && <AreaDetailScreen area="Casa" expenses={expenses} incomes={incomes} budgets={budgets} setScreen={setScreen} />}
+        {screen === "botica" && <AreaDetailScreen area="Botica Spa" expenses={expenses} incomes={incomes} budgets={budgets} setScreen={setScreen} />}
+        {screen === "walkme" && <AreaDetailScreen area="Walkme" expenses={expenses} incomes={incomes} budgets={budgets} setScreen={setScreen} />}
         {screen === "crisis" && <CrisisScreen totals={totals} setScreen={setScreen} />}
         {screen === "planb" && <PlanBScreen totals={totals} />}
       </section>
@@ -961,7 +963,7 @@ function Dashboard({
 
       <SectionTitle title="Separado por area" />
       <div className="grid gap-3 lg:grid-cols-3">
-        <AreaButton label="Casa" value={money.format(totals.homeExpenses)} icon={Home} />
+        <AreaButton label="Casa" value={money.format(totals.homeExpenses)} icon={Home} onClick={() => setScreen("home")} />
         <AreaButton label="Botica Spa" value={money.format(totals.boticaExpenses)} icon={Sparkles} onClick={() => setScreen("botica")} />
         <AreaButton label="Walkme" value={money.format(totals.walkmeExpenses)} icon={Store} onClick={() => setScreen("walkme")} />
       </div>
@@ -1857,73 +1859,98 @@ function AgendaItemForm({ item, defaultType, onSave }: { item?: AgendaItem; defa
   );
 }
 
-function BusinessScreen({
-  business,
+function AreaDetailScreen({
+  area,
   expenses,
   incomes,
+  budgets,
   setScreen
 }: {
-  business: "Botica Spa" | "Walkme";
+  area: "Casa" | "Botica Spa" | "Walkme";
   expenses: Expense[];
   incomes: Income[];
+  budgets: BudgetItem[];
   setScreen: (screen: Screen) => void;
 }) {
-  const businessExpenses = expenses.filter((item) => item.business === business);
-  const businessIncomes = incomes.filter((item) => item.business === business);
-  const total = businessExpenses.reduce((sum, item) => sum + item.amount, 0);
-  const incomeTotal = businessIncomes.reduce((sum, item) => sum + item.amount, 0);
-  const personal = businessExpenses.filter((item) => item.paidPersonally).reduce((sum, item) => sum + item.amount, 0);
-  const businessSubscriptions = subscriptions.filter((item) => item.type === business);
+  const areaExpenses = expenses.filter((item) => item.type === area);
+  const areaIncomes = incomes.filter((item) => item.type === area);
+  const areaBudgets = budgets.filter((item) => item.area === area);
+  const total = areaExpenses.reduce((sum, item) => sum + item.amount, 0);
+  const incomeTotal = areaIncomes.reduce((sum, item) => sum + item.amount, 0);
+  const budgetTotal = areaBudgets.reduce((sum, item) => sum + item.plannedAmount, 0);
+  const personal = areaExpenses.filter((item) => item.paidPersonally).reduce((sum, item) => sum + item.amount, 0);
+  const areaSubscriptions = subscriptions.filter((item) => item.type === area);
+  const topCategory = topExpenseCategory(areaExpenses);
   return (
     <div className="space-y-4">
       <StatusHero
-        title={`${business} en atencion`}
-        message={`${business} no ha generado ingresos este mes y tiene gastos activos por revisar.`}
-        value={money.format(total * -1)}
-        subvalue={`Dinero personal usado: ${money.format(personal)}`}
+        title={`${area} - resumen`}
+        message={`${area} tiene ${areaExpenses.length} gastos registrados y ${areaBudgets.length} partidas de presupuesto.`}
+        value={money.format(incomeTotal - total)}
+        subvalue={area === "Casa" ? `Presupuesto estimado: ${money.format(budgetTotal)}` : `Dinero personal usado: ${money.format(personal)}`}
       />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard label="Ingresos" value={money.format(incomeTotal)} />
         <MetricCard label="Gastos" value={money.format(total)} tone="red" />
         <MetricCard label="Balance" value={money.format(incomeTotal - total)} tone={incomeTotal - total < 0 ? "red" : "default"} />
-        <MetricCard label="Suscripciones" value={money.format(businessSubscriptions.reduce((sum, item) => sum + item.amount, 0))} />
+        <MetricCard label="Presupuesto" value={money.format(budgetTotal)} />
       </div>
-      <SectionTitle title="Ingresos registrados" />
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        <AreaButton label="Casa" value={money.format(expenses.filter((item) => item.type === "Casa").reduce((sum, item) => sum + item.amount, 0))} icon={Home} onClick={() => setScreen("home")} />
+        <AreaButton label="Botica Spa" value={money.format(expenses.filter((item) => item.type === "Botica Spa").reduce((sum, item) => sum + item.amount, 0))} icon={Sparkles} onClick={() => setScreen("botica")} />
+        <AreaButton label="Walkme" value={money.format(expenses.filter((item) => item.type === "Walkme").reduce((sum, item) => sum + item.amount, 0))} icon={Store} onClick={() => setScreen("walkme")} />
+      </div>
+
+      <SectionTitle title="Presupuesto vs real" action="Editar presupuesto" onClick={() => setScreen("budget")} />
       <div className="space-y-3">
-        {businessIncomes.length === 0 ? (
-          <p className="rounded-2xl bg-white p-4 text-sm text-slate-500">Sin ingresos registrados para {business}.</p>
+        {areaBudgets.length === 0 ? (
+          <EmptyState text={`Sin presupuesto registrado para ${area}.`} />
         ) : (
-          businessIncomes.map((item) => <InsightRow key={item.id} icon={ArrowUpCircle} label={item.source} value={money.format(item.amount)} />)
+          areaBudgets.map((item) => (
+            <BudgetItemCard key={item.id} budget={item} actual={budgetActual(item, expenses)} onEdit={() => setScreen("budget")} onDelete={() => setScreen("budget")} />
+          ))
         )}
       </div>
+
+      <SectionTitle title="Ingresos registrados" />
+      <div className="space-y-3">
+        {areaIncomes.length === 0 ? (
+          <p className="rounded-2xl bg-white p-4 text-sm text-slate-500">Sin ingresos registrados para {area}.</p>
+        ) : (
+          areaIncomes.map((item) => <InsightRow key={item.id} icon={ArrowUpCircle} label={item.source} value={money.format(item.amount)} />)
+        )}
+      </div>
+
       <SectionTitle title="Gastos mas altos" />
       <div className="space-y-3">
-        {businessExpenses.map((item) => (
+        {areaExpenses.map((item) => (
           <InsightRow key={item.name} icon={ReceiptText} label={item.name} value={money.format(item.amount)} tone="red" />
         ))}
       </div>
+
+      <SectionTitle title="Categoria con mas gasto" />
+      <InsightRow icon={ReceiptText} label={topCategory.label} value={money.format(topCategory.amount)} tone={topCategory.amount > 0 ? "red" : "default"} />
+
       <SectionTitle title="Suscripciones asignadas" />
       <div className="space-y-3">
-        {businessSubscriptions.map((item) => (
+        {areaSubscriptions.length === 0 ? (
+          <EmptyState text={`Sin suscripciones asignadas a ${area}.`} />
+        ) : areaSubscriptions.map((item) => (
           <InsightRow key={item.name} icon={Bell} label={item.name} value={money.format(item.amount)} tone={item.priority === "Pausar" ? "yellow" : "default"} />
         ))}
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          className={`min-h-12 rounded-xl px-3 font-semibold ${business === "Botica Spa" ? "bg-ink text-white" : "bg-white text-ink"}`}
-          onClick={() => setScreen("botica")}
-        >
-          Botica Spa
-        </button>
-        <button
-          className={`min-h-12 rounded-xl px-3 font-semibold ${business === "Walkme" ? "bg-ink text-white" : "bg-white text-ink"}`}
-          onClick={() => setScreen("walkme")}
-        >
-          Walkme
-        </button>
-      </div>
     </div>
   );
+}
+
+function topExpenseCategory(expenses: Expense[]) {
+  const totals = expenses.reduce<Record<string, number>>((acc, item) => {
+    acc[item.category] = (acc[item.category] ?? 0) + item.amount;
+    return acc;
+  }, {});
+  const [label, amount] = Object.entries(totals).sort((a, b) => b[1] - a[1])[0] ?? ["Sin gastos", 0];
+  return { label, amount };
 }
 
 function CrisisScreen({
@@ -2938,6 +2965,7 @@ function titleFor(screen: Screen) {
     payments: "Pagos proximos",
     agenda: "Agenda",
     budget: "Presupuesto",
+    home: "Casa",
     botica: "Botica Spa",
     walkme: "Walkme",
     crisis: "Prioridades",
