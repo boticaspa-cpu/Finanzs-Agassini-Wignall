@@ -618,7 +618,7 @@ const navItems = [
   { id: "agenda" as Screen, label: "Agenda", icon: CalendarDays },
   { id: "home" as Screen, label: "Casa", icon: Home },
   { id: "botica" as Screen, label: "Botica", icon: Sparkles },
-  { id: "walkme" as Screen, label: "Wokmi", icon: Store }
+  { id: "walkme" as Screen, label: "Walkme", icon: Store }
 ];
 
 const quickActions = [
@@ -1243,7 +1243,7 @@ function Dashboard({
       <div className="grid gap-3 lg:grid-cols-3">
         <AreaButton label="Casa" value={money.format(totals.homeExpenses)} icon={Home} onClick={() => setScreen("home")} />
         <AreaButton label="Botica Spa" value={money.format(totals.boticaExpenses)} icon={Sparkles} onClick={() => setScreen("botica")} />
-        <AreaButton label="Wokmi" value={money.format(totals.walkmeExpenses)} icon={Store} onClick={() => setScreen("walkme")} />
+        <AreaButton label="Walkme" value={money.format(totals.walkmeExpenses)} icon={Store} onClick={() => setScreen("walkme")} />
       </div>
 
       <SectionTitle title="Presupuesto" action="Ver presupuesto" onClick={() => setScreen("budget")} />
@@ -2196,7 +2196,7 @@ function AreaDetailScreen({
   const areaSubscriptions = subscriptions.filter((item) => item.type === area);
   const topCategory = topExpenseCategory(areaExpenses);
   const dailyGoal = area === "Casa" ? Math.ceil(budgetTotal / 30) : Math.ceil(Math.max(total, budgetTotal) / 30);
-  const areaLabel = area === "Walkme" ? "Wokmi" : area;
+  const areaLabel = area;
   return (
     <div className="space-y-4">
       <StatusHero
@@ -2217,7 +2217,7 @@ function AreaDetailScreen({
       <div className="grid gap-3 lg:grid-cols-3">
         <AreaButton label="Casa" value={money.format(expenses.filter((item) => item.type === "Casa").reduce((sum, item) => sum + item.amount, 0))} icon={Home} onClick={() => setScreen("home")} />
         <AreaButton label="Botica Spa" value={money.format(expenses.filter((item) => item.type === "Botica Spa").reduce((sum, item) => sum + item.amount, 0))} icon={Sparkles} onClick={() => setScreen("botica")} />
-        <AreaButton label="Wokmi" value={money.format(expenses.filter((item) => item.type === "Walkme").reduce((sum, item) => sum + item.amount, 0))} icon={Store} onClick={() => setScreen("walkme")} />
+        <AreaButton label="Walkme" value={money.format(expenses.filter((item) => item.type === "Walkme").reduce((sum, item) => sum + item.amount, 0))} icon={Store} onClick={() => setScreen("walkme")} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -3304,7 +3304,7 @@ function titleFor(screen: Screen) {
     budget: "Presupuesto",
     home: "Casa",
     botica: "Botica Spa",
-    walkme: "Wokmi",
+    walkme: "Walkme",
     crisis: "Prioridades",
     planb: "Plan familiar"
   };
