@@ -233,5 +233,21 @@ create policy "Allow public MVP read weekly reviews" on weekly_reviews for selec
 create policy "Allow public MVP write weekly reviews" on weekly_reviews for all using (true) with check (true);
 
 insert into storage.buckets (id, name, public)
-values ('receipts', 'receipts', false)
+values ('receipts', 'receipts', true)
 on conflict (id) do nothing;
+
+update storage.buckets
+set public = true
+where id = 'receipts';
+
+create policy "Allow public MVP read receipts" on storage.objects
+for select using (bucket_id = 'receipts');
+
+create policy "Allow public MVP upload receipts" on storage.objects
+for insert with check (bucket_id = 'receipts');
+
+create policy "Allow public MVP update receipts" on storage.objects
+for update using (bucket_id = 'receipts') with check (bucket_id = 'receipts');
+
+create policy "Allow public MVP delete receipts" on storage.objects
+for delete using (bucket_id = 'receipts');

@@ -34,6 +34,7 @@ import {
   X
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase/client";
 
 type Screen =
   | "dashboard"
@@ -65,9 +66,11 @@ type Expense = {
   due: string;
   business?: "Botica Spa" | "Walkme";
   paidPersonally?: boolean;
+  notes?: string;
   attachmentName?: string;
   attachmentType?: "image" | "pdf";
   attachmentUrl?: string;
+  attachmentFile?: File;
 };
 type IncomeArea = "Personal Maria" | "Personal Gina" | "Compartido" | "Botica Spa" | "Walkme" | "Prestamo" | "Apoyo familiar" | "Reembolso" | "Otro";
 type Income = {
@@ -83,6 +86,14 @@ type Income = {
   attachmentName?: string;
   attachmentType?: "image" | "pdf";
   attachmentUrl?: string;
+  attachmentFile?: File;
+};
+type AppSettings = {
+  id?: string;
+  availableMoney: number;
+  monthlySurvivalAmount: number;
+  currency: string;
+  emergencyStatus: string;
 };
 type ExpenseFilter = "Todos" | ExpenseArea;
 type IncomeFilter = "Todos" | IncomeArea;
@@ -122,11 +133,11 @@ const money = new Intl.NumberFormat("es-MX", {
   maximumFractionDigits: 0
 });
 
-const settings = {
+const defaultSettings: AppSettings = {
   availableMoney: 30000,
   monthlySurvivalAmount: 42000,
-  currentIncome: 0,
-  emergencyStatus: "red"
+  currency: "MXN",
+  emergencyStatus: "attention"
 };
 
 const authorizedUsers: Record<string, string> = {
@@ -606,8 +617,8 @@ const navItems = [
   { id: "dashboard" as Screen, label: "Inicio", icon: LayoutDashboard },
   { id: "agenda" as Screen, label: "Agenda", icon: CalendarDays },
   { id: "home" as Screen, label: "Casa", icon: Home },
-  { id: "budget" as Screen, label: "Presup.", icon: PiggyBank },
-  { id: "botica" as Screen, label: "Negocios", icon: Store }
+  { id: "botica" as Screen, label: "Botica", icon: Sparkles },
+  { id: "walkme" as Screen, label: "Wokmi", icon: Store }
 ];
 
 const quickActions = [
@@ -637,6 +648,85 @@ function priorityLabel(priority: Priority) {
   return labels[priority];
 }
 
+function newRecordId() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}`;
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function receiptKind(file: File) {
+  if (file.type === "application/pdf") return "pdf" as const;
+  return "image" as const;
+}
+
+async function uploadReceipt(file: File | undefined, folder: "incomes" | "expenses") {
+  if (!file) return undefined;
+  const extension = file.name.split(".").pop() || "file";
+  const path = `${folder}/${newRecordId()}.${extension}`;
+  const { error } = await supabase.storage.from("receipts").upload(path, file, { upsert: true });
+  if (error) {
+    console.warn("Receipt upload failed", error.message);
+    return undefined;
+  }
+  const { data } = supabase.storage.from("receipts").getPublicUrl(path);
+  return data.publicUrl || path;
+}
+
+function incomeFromRow(row: Record<string, unknown>): Income {
+  const type = String(row.type ?? "Compartido") as IncomeArea;
+  const attachment = typeof row.attachment_path === "string" && row.attachment_path.length > 0 ? row.attachment_path : undefined;
+  return {
+    id: String(row.id),
+    date: String(row.date ?? "2026-05-01"),
+    source: String(row.source ?? ""),
+    type,
+    amount: Number(row.amount ?? 0),
+    account: "Cuenta Maria",
+    method: String(row.payment_method ?? "Manual"),
+    notes: String(row.notes ?? ""),
+    business: type === "Botica Spa" || type === "Walkme" ? type : undefined,
+    attachmentName: attachment ? "Comprobante guardado" : undefined,
+    attachmentType: attachment?.toLowerCase().includes(".pdf") ? "pdf" : attachment ? "image" : undefined,
+    attachmentUrl: attachment
+  };
+}
+
+function expenseFromRow(row: Record<string, unknown>): Expense {
+  const type = String(row.type ?? "Casa") as ExpenseArea;
+  const attachment = typeof row.attachment_path === "string" && row.attachment_path.length > 0 ? row.attachment_path : undefined;
+  return {
+    id: String(row.id),
+    date: String(row.date ?? "2026-05-01"),
+    name: String(row.name ?? ""),
+    amount: Number(row.amount ?? 0),
+    type,
+    category: String(row.category ?? "Sin categoria"),
+    priority: String(row.priority ?? "important") as Priority,
+    paidBy: String(row.paid_by_label ?? "Compartido"),
+    due: String(row.due_date ?? row.date ?? "2026-05-01"),
+    business: type === "Botica Spa" || type === "Walkme" ? type : undefined,
+    paidPersonally: Boolean(row.is_business_expense_paid_personally),
+    notes: String(row.notes ?? ""),
+    attachmentName: attachment ? "Comprobante guardado" : undefined,
+    attachmentType: attachment?.toLowerCase().includes(".pdf") ? "pdf" : attachment ? "image" : undefined,
+    attachmentUrl: attachment
+  };
+}
+
+function budgetFromRow(row: Record<string, unknown>): BudgetItem {
+  return {
+    id: String(row.id),
+    area: String(row.area ?? "Casa") as BudgetItem["area"],
+    category: String(row.category ?? "Sin categoria"),
+    name: String(row.name ?? ""),
+    kind: String(row.kind ?? "variable") as BudgetKind,
+    plannedAmount: Number(row.planned_amount ?? 0),
+    notes: String(row.notes ?? "")
+  };
+}
+
 function AppShell() {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -645,17 +735,68 @@ function AppShell() {
   const [incomes, setIncomes] = useState<Income[]>(initialIncomes);
   const [expenses, setExpenses] = useState<Expense[]>(initialExpenses);
   const [budgets, setBudgets] = useState<BudgetItem[]>(initialBudgets);
+  const [appSettings, setAppSettings] = useState<AppSettings>(defaultSettings);
+  const [syncStatus, setSyncStatus] = useState("Conectando con Supabase...");
 
   useEffect(() => {
     setCurrentUser(window.localStorage.getItem("control30-user"));
     setAuthReady(true);
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadRealData() {
+      try {
+        const [settingsResponse, incomesResponse, expensesResponse, budgetsResponse] = await Promise.all([
+          supabase.from("settings").select("*").limit(1).maybeSingle(),
+          supabase.from("incomes").select("*").gte("date", "2026-05-01").order("date", { ascending: false }),
+          supabase.from("expenses").select("*").gte("date", "2026-05-01").order("date", { ascending: false }),
+          supabase.from("budget_items").select("*").order("created_at", { ascending: true })
+        ]);
+
+        if (!active) return;
+
+        if (settingsResponse.data) {
+          setAppSettings({
+            id: settingsResponse.data.id,
+            availableMoney: Number(settingsResponse.data.available_money ?? defaultSettings.availableMoney),
+            monthlySurvivalAmount: Number(settingsResponse.data.monthly_survival_amount ?? defaultSettings.monthlySurvivalAmount),
+            currency: String(settingsResponse.data.currency ?? "MXN"),
+            emergencyStatus: String(settingsResponse.data.emergency_status ?? "attention")
+          });
+        }
+
+        if (incomesResponse.data && incomesResponse.data.length > 0) {
+          setIncomes(incomesResponse.data.map((row) => incomeFromRow(row)));
+        }
+        if (expensesResponse.data && expensesResponse.data.length > 0) {
+          setExpenses(expensesResponse.data.map((row) => expenseFromRow(row)));
+        }
+        if (budgetsResponse.data && budgetsResponse.data.length > 0) {
+          setBudgets(budgetsResponse.data.map((row) => budgetFromRow(row)));
+        }
+
+        const firstError = settingsResponse.error ?? incomesResponse.error ?? expensesResponse.error ?? budgetsResponse.error;
+        setSyncStatus(firstError ? "Supabase necesita el SQL de tablas. Mientras tanto ves datos base." : "Guardado real activo desde el 1 de mayo.");
+      } catch {
+        if (active) {
+          setSyncStatus("No pude cargar Supabase. Puedes ver la app, pero revisa que el SQL este corrido.");
+        }
+      }
+    }
+
+    void loadRealData();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const totals = useMemo(() => {
     const monthIncome = incomes.reduce((sum, item) => sum + item.amount, 0);
     const monthExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
-    const shortfall = Math.max(0, settings.monthlySurvivalAmount - settings.availableMoney);
-    const survivalDays = calcDays(settings.availableMoney, settings.monthlySurvivalAmount);
+    const shortfall = Math.max(0, appSettings.monthlySurvivalAmount - appSettings.availableMoney);
+    const survivalDays = calcDays(appSettings.availableMoney, appSettings.monthlySurvivalAmount);
     const personalBusiness = expenses
       .filter((item) => item.paidPersonally)
       .reduce((sum, item) => sum + item.amount, 0);
@@ -690,7 +831,136 @@ function AppShell() {
       weeklySalesGoal: Math.ceil(shortfall / 4),
       drainingBusiness: walkmeExpenses >= boticaExpenses ? "Walkme" : "Botica Spa"
     };
-  }, [expenses, incomes]);
+  }, [appSettings, expenses, incomes]);
+
+  async function saveSettings(next: AppSettings) {
+    setAppSettings(next);
+    const payload = {
+      available_money: next.availableMoney,
+      monthly_survival_amount: next.monthlySurvivalAmount,
+      currency: next.currency,
+      emergency_status: next.emergencyStatus,
+      updated_at: new Date().toISOString()
+    };
+    const request = next.id ? supabase.from("settings").update(payload).eq("id", next.id).select().single() : supabase.from("settings").insert(payload).select().single();
+    const { data, error } = await request;
+    if (error) {
+      setSyncStatus(`No se guardo configuracion: ${error.message}`);
+      return;
+    }
+    setAppSettings({
+      id: data.id,
+      availableMoney: Number(data.available_money),
+      monthlySurvivalAmount: Number(data.monthly_survival_amount),
+      currency: String(data.currency),
+      emergencyStatus: String(data.emergency_status)
+    });
+    setSyncStatus("Datos base guardados en Supabase.");
+  }
+
+  async function saveIncomeRecord(income: Income) {
+    const attachmentUrl = (await uploadReceipt(income.attachmentFile, "incomes")) ?? income.attachmentUrl;
+    const payload = {
+      ...(isUuid(income.id) ? { id: income.id } : {}),
+      date: income.date,
+      amount: income.amount,
+      source: income.source,
+      type: income.type,
+      payment_method: income.method,
+      attachment_path: attachmentUrl ?? null,
+      notes: income.notes,
+      updated_at: new Date().toISOString()
+    };
+    const { data, error } = await supabase.from("incomes").upsert(payload).select().single();
+    if (error) {
+      setSyncStatus(`No se guardo ingreso: ${error.message}`);
+      return;
+    }
+    const saved = incomeFromRow(data);
+    setIncomes((current) => {
+      const exists = current.some((item) => item.id === income.id || item.id === saved.id);
+      return exists ? current.map((item) => (item.id === income.id || item.id === saved.id ? saved : item)) : [saved, ...current];
+    });
+    setSyncStatus("Ingreso guardado en Supabase.");
+  }
+
+  async function deleteIncomeRecord(id: string) {
+    setIncomes((current) => current.filter((item) => item.id !== id));
+    if (isUuid(id)) {
+      const { error } = await supabase.from("incomes").delete().eq("id", id);
+      setSyncStatus(error ? `No se borro ingreso: ${error.message}` : "Ingreso borrado.");
+    }
+  }
+
+  async function saveExpenseRecord(expense: Expense) {
+    const attachmentUrl = (await uploadReceipt(expense.attachmentFile, "expenses")) ?? expense.attachmentUrl;
+    const payload = {
+      ...(isUuid(expense.id) ? { id: expense.id } : {}),
+      date: expense.date,
+      name: expense.name,
+      amount: expense.amount,
+      type: expense.type,
+      category: expense.category,
+      priority: expense.priority,
+      paid_by_label: expense.paidBy,
+      due_date: expense.due,
+      is_business_expense_paid_personally: Boolean(expense.paidPersonally),
+      attachment_path: attachmentUrl ?? null,
+      notes: expense.notes ?? "",
+      updated_at: new Date().toISOString()
+    };
+    const { data, error } = await supabase.from("expenses").upsert(payload).select().single();
+    if (error) {
+      setSyncStatus(`No se guardo gasto: ${error.message}`);
+      return;
+    }
+    const saved = expenseFromRow(data);
+    setExpenses((current) => {
+      const exists = current.some((item) => item.id === expense.id || item.id === saved.id);
+      return exists ? current.map((item) => (item.id === expense.id || item.id === saved.id ? saved : item)) : [saved, ...current];
+    });
+    setSyncStatus("Gasto guardado en Supabase.");
+  }
+
+  async function deleteExpenseRecord(id: string) {
+    setExpenses((current) => current.filter((item) => item.id !== id));
+    if (isUuid(id)) {
+      const { error } = await supabase.from("expenses").delete().eq("id", id);
+      setSyncStatus(error ? `No se borro gasto: ${error.message}` : "Gasto borrado.");
+    }
+  }
+
+  async function saveBudgetRecord(budget: BudgetItem) {
+    const payload = {
+      ...(isUuid(budget.id) ? { id: budget.id } : {}),
+      area: budget.area,
+      category: budget.category,
+      name: budget.name,
+      kind: budget.kind,
+      planned_amount: budget.plannedAmount,
+      notes: budget.notes,
+      updated_at: new Date().toISOString()
+    };
+    const { data, error } = await supabase.from("budget_items").upsert(payload).select().single();
+    if (error) {
+      setSyncStatus(`No se guardo presupuesto: ${error.message}`);
+      return;
+    }
+    const saved = budgetFromRow(data);
+    setBudgets((current) => {
+      const exists = current.some((item) => item.id === budget.id || item.id === saved.id);
+      return exists ? current.map((item) => (item.id === budget.id || item.id === saved.id ? saved : item)) : [saved, ...current];
+    });
+    setSyncStatus("Presupuesto guardado en Supabase.");
+  }
+
+  async function deleteBudgetRecord(id: string) {
+    setBudgets((current) => current.filter((item) => item.id !== id));
+    if (isUuid(id)) {
+      const { error } = await supabase.from("budget_items").delete().eq("id", id);
+      setSyncStatus(error ? `No se borro presupuesto: ${error.message}` : "Presupuesto borrado.");
+    }
+  }
 
   function login(user: string) {
     window.localStorage.setItem("control30-user", user);
@@ -773,20 +1043,20 @@ function AppShell() {
       </header>
 
       <section className="mx-auto w-full max-w-6xl px-5 py-5 lg:px-8 lg:py-7">
-        {screen === "dashboard" && <Dashboard totals={totals} setScreen={setScreen} />}
-        {screen === "incomes" && <IncomeScreen incomes={incomes} setIncomes={setIncomes} />}
-        {screen === "expenses" && <ExpenseScreen expenses={expenses} setExpenses={setExpenses} />}
-        {screen === "budget" && <BudgetScreen budgets={budgets} setBudgets={setBudgets} expenses={expenses} setScreen={setScreen} />}
+        {screen === "dashboard" && <Dashboard totals={totals} settings={appSettings} syncStatus={syncStatus} onSaveSettings={(next) => void saveSettings(next)} setScreen={setScreen} />}
+        {screen === "incomes" && <IncomeScreen incomes={incomes} onSaveIncome={(income) => void saveIncomeRecord(income)} onDeleteIncome={(id) => void deleteIncomeRecord(id)} />}
+        {screen === "expenses" && <ExpenseScreen expenses={expenses} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onDeleteExpense={(id) => void deleteExpenseRecord(id)} />}
+        {screen === "budget" && <BudgetScreen budgets={budgets} onSaveBudget={(budget) => void saveBudgetRecord(budget)} onDeleteBudget={(id) => void deleteBudgetRecord(id)} expenses={expenses} setScreen={setScreen} />}
         {screen === "accounts" && <AccountsScreen />}
         {screen === "debts" && <DebtsScreen />}
         {screen === "subscriptions" && <SubscriptionsScreen />}
         {screen === "payments" && <PaymentsScreen />}
         {screen === "agenda" && <AgendaScreen />}
-        {screen === "home" && <AreaDetailScreen area="Casa" expenses={expenses} incomes={incomes} budgets={budgets} setScreen={setScreen} />}
-        {screen === "botica" && <AreaDetailScreen area="Botica Spa" expenses={expenses} incomes={incomes} budgets={budgets} setScreen={setScreen} />}
-        {screen === "walkme" && <AreaDetailScreen area="Walkme" expenses={expenses} incomes={incomes} budgets={budgets} setScreen={setScreen} />}
+        {screen === "home" && <AreaDetailScreen area="Casa" expenses={expenses} incomes={incomes} budgets={budgets} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
+        {screen === "botica" && <AreaDetailScreen area="Botica Spa" expenses={expenses} incomes={incomes} budgets={budgets} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
+        {screen === "walkme" && <AreaDetailScreen area="Walkme" expenses={expenses} incomes={incomes} budgets={budgets} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
         {screen === "crisis" && <CrisisScreen totals={totals} setScreen={setScreen} />}
-        {screen === "planb" && <PlanBScreen totals={totals} />}
+        {screen === "planb" && <PlanBScreen totals={totals} settings={appSettings} />}
       </section>
 
       {quickOpen && (
@@ -921,9 +1191,15 @@ function LoginScreen({ onLogin }: { onLogin: (user: string) => void }) {
 
 function Dashboard({
   totals,
+  settings,
+  syncStatus,
+  onSaveSettings,
   setScreen
 }: {
   totals: ReturnType<typeof useTotalsShape>;
+  settings: AppSettings;
+  syncStatus: string;
+  onSaveSettings: (settings: AppSettings) => void;
   setScreen: (screen: Screen) => void;
 }) {
   return (
@@ -936,6 +1212,8 @@ function Dashboard({
         value={money.format(settings.availableMoney)}
         subvalue={`${totals.survivalDays} dias estimados de cobertura`}
       />
+
+      <SettingsQuickCard settings={settings} syncStatus={syncStatus} onSave={onSaveSettings} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard label="Minimo mensual" value={money.format(settings.monthlySurvivalAmount)} />
@@ -965,7 +1243,7 @@ function Dashboard({
       <div className="grid gap-3 lg:grid-cols-3">
         <AreaButton label="Casa" value={money.format(totals.homeExpenses)} icon={Home} onClick={() => setScreen("home")} />
         <AreaButton label="Botica Spa" value={money.format(totals.boticaExpenses)} icon={Sparkles} onClick={() => setScreen("botica")} />
-        <AreaButton label="Walkme" value={money.format(totals.walkmeExpenses)} icon={Store} onClick={() => setScreen("walkme")} />
+        <AreaButton label="Wokmi" value={money.format(totals.walkmeExpenses)} icon={Store} onClick={() => setScreen("walkme")} />
       </div>
 
       <SectionTitle title="Presupuesto" action="Ver presupuesto" onClick={() => setScreen("budget")} />
@@ -979,12 +1257,58 @@ function Dashboard({
   );
 }
 
+function SettingsQuickCard({ settings, syncStatus, onSave }: { settings: AppSettings; syncStatus: string; onSave: (settings: AppSettings) => void }) {
+  const [draft, setDraft] = useState(settings);
+
+  useEffect(() => {
+    setDraft(settings);
+  }, [settings]);
+
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-bold">Datos base</p>
+          <p className="mt-1 text-sm text-slate-500">{syncStatus}</p>
+        </div>
+        <StatusPill label="Desde 1 mayo" tone="green" />
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <label className="grid gap-1">
+          <span className="text-sm font-medium text-slate-600">Dinero disponible</span>
+          <input
+            className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+            inputMode="decimal"
+            value={draft.availableMoney || ""}
+            onChange={(event) => setDraft((current) => ({ ...current, availableMoney: Number(event.target.value) }))}
+          />
+        </label>
+        <label className="grid gap-1">
+          <span className="text-sm font-medium text-slate-600">Minimo mensual</span>
+          <input
+            className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+            inputMode="decimal"
+            value={draft.monthlySurvivalAmount || ""}
+            onChange={(event) => setDraft((current) => ({ ...current, monthlySurvivalAmount: Number(event.target.value) }))}
+          />
+        </label>
+      </div>
+      <button className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-ink px-4 font-semibold text-white" onClick={() => onSave(draft)}>
+        <Save className="h-4 w-4" />
+        Guardar datos base
+      </button>
+    </Card>
+  );
+}
+
 function IncomeScreen({
   incomes,
-  setIncomes
+  onSaveIncome,
+  onDeleteIncome
 }: {
   incomes: Income[];
-  setIncomes: React.Dispatch<React.SetStateAction<Income[]>>;
+  onSaveIncome: (income: Income) => void;
+  onDeleteIncome: (id: string) => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedArea, setSelectedArea] = useState<IncomeFilter>("Todos");
@@ -994,18 +1318,12 @@ function IncomeScreen({
   const visibleTotal = visibleIncomes.reduce((sum, item) => sum + item.amount, 0);
 
   function saveIncome(income: Income) {
-    setIncomes((current) => {
-      const exists = current.some((item) => item.id === income.id);
-      if (exists) {
-        return current.map((item) => (item.id === income.id ? income : item));
-      }
-      return [income, ...current];
-    });
+    onSaveIncome(income);
     setEditingId(null);
   }
 
   function deleteIncome(id: string) {
-    setIncomes((current) => current.filter((item) => item.id !== id));
+    onDeleteIncome(id);
     if (editingId === id) {
       setEditingId(null);
     }
@@ -1013,7 +1331,7 @@ function IncomeScreen({
 
   return (
     <div className="space-y-4">
-      <CalmNotice text="Registra ingresos por negocio o persona. Puedes dictarlo por voz y adjuntar foto o PDF de la factura; por ahora queda local mientras la app esta abierta." />
+      <CalmNotice text="Registra ingresos por negocio o persona. Puedes dictarlo por voz y adjuntar foto o PDF; se guarda en Supabase para que no se pierda al refrescar." />
       <div className="grid grid-cols-2 gap-3">
         <MetricCard label="Total ingresos" value={money.format(total)} />
         <MetricCard label="Registros" value={`${incomes.length}`} />
@@ -1046,10 +1364,12 @@ function IncomeScreen({
 
 function ExpenseScreen({
   expenses,
-  setExpenses
+  onSaveExpense,
+  onDeleteExpense
 }: {
   expenses: Expense[];
-  setExpenses: React.Dispatch<React.SetStateAction<Expense[]>>;
+  onSaveExpense: (expense: Expense) => void;
+  onDeleteExpense: (id: string) => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedArea, setSelectedArea] = useState<ExpenseFilter>("Todos");
@@ -1059,18 +1379,12 @@ function ExpenseScreen({
   const visibleTotal = visibleExpenses.reduce((sum, item) => sum + item.amount, 0);
 
   function saveExpense(expense: Expense) {
-    setExpenses((current) => {
-      const exists = current.some((item) => item.id === expense.id);
-      if (exists) {
-        return current.map((item) => (item.id === expense.id ? expense : item));
-      }
-      return [expense, ...current];
-    });
+    onSaveExpense(expense);
     setEditingId(null);
   }
 
   function deleteExpense(id: string) {
-    setExpenses((current) => current.filter((item) => item.id !== id));
+    onDeleteExpense(id);
     if (editingId === id) {
       setEditingId(null);
     }
@@ -1078,7 +1392,7 @@ function ExpenseScreen({
 
   return (
     <div className="space-y-4">
-      <CalmNotice text="Los gastos ahora se separan por area y negocio. Puedes agregar, editar o borrar registros; por ahora se guardan solo mientras la app esta abierta." />
+      <CalmNotice text="Los gastos se separan por casa y negocio. Puedes subir foto/PDF o capturarlo manual; se guarda en Supabase para que ya lo puedas usar real." />
       <div className="grid grid-cols-2 gap-3">
         <MetricCard label="Total egresos" value={money.format(total)} />
         <MetricCard label="Registros" value={`${expenses.length}`} />
@@ -1112,12 +1426,14 @@ function ExpenseScreen({
 
 function BudgetScreen({
   budgets,
-  setBudgets,
+  onSaveBudget,
+  onDeleteBudget,
   expenses,
   setScreen
 }: {
   budgets: BudgetItem[];
-  setBudgets: React.Dispatch<React.SetStateAction<BudgetItem[]>>;
+  onSaveBudget: (budget: BudgetItem) => void;
+  onDeleteBudget: (id: string) => void;
   expenses: Expense[];
   setScreen: (screen: Screen) => void;
 }) {
@@ -1130,18 +1446,12 @@ function BudgetScreen({
   const variableTotal = visibleBudgets.filter((item) => item.kind === "variable").reduce((sum, item) => sum + item.plannedAmount, 0);
 
   function saveBudget(item: BudgetItem) {
-    setBudgets((current) => {
-      const exists = current.some((entry) => entry.id === item.id);
-      if (exists) {
-        return current.map((entry) => (entry.id === item.id ? item : entry));
-      }
-      return [item, ...current];
-    });
+    onSaveBudget(item);
     setEditingId(null);
   }
 
   function deleteBudget(id: string) {
-    setBudgets((current) => current.filter((item) => item.id !== id));
+    onDeleteBudget(id);
     if (editingId === id) {
       setEditingId(null);
     }
@@ -1232,7 +1542,7 @@ function BudgetEditor({
 }) {
   const [draft, setDraft] = useState<BudgetItem>(
     budget ?? {
-      id: `budget-${Date.now()}`,
+      id: newRecordId(),
       area: defaultArea ?? "Casa",
       category: "",
       name: "",
@@ -1258,7 +1568,7 @@ function BudgetEditor({
     });
     if (!budget) {
       setDraft({
-        id: `budget-${Date.now() + 1}`,
+        id: newRecordId(),
         area: defaultArea ?? "Casa",
         category: "",
         name: "",
@@ -1864,12 +2174,16 @@ function AreaDetailScreen({
   expenses,
   incomes,
   budgets,
+  onSaveExpense,
+  onSaveIncome,
   setScreen
 }: {
   area: "Casa" | "Botica Spa" | "Walkme";
   expenses: Expense[];
   incomes: Income[];
   budgets: BudgetItem[];
+  onSaveExpense: (expense: Expense) => void;
+  onSaveIncome: (income: Income) => void;
   setScreen: (screen: Screen) => void;
 }) {
   const areaExpenses = expenses.filter((item) => item.type === area);
@@ -1881,11 +2195,13 @@ function AreaDetailScreen({
   const personal = areaExpenses.filter((item) => item.paidPersonally).reduce((sum, item) => sum + item.amount, 0);
   const areaSubscriptions = subscriptions.filter((item) => item.type === area);
   const topCategory = topExpenseCategory(areaExpenses);
+  const dailyGoal = area === "Casa" ? Math.ceil(budgetTotal / 30) : Math.ceil(Math.max(total, budgetTotal) / 30);
+  const areaLabel = area === "Walkme" ? "Wokmi" : area;
   return (
     <div className="space-y-4">
       <StatusHero
-        title={`${area} - resumen`}
-        message={`${area} tiene ${areaExpenses.length} gastos registrados y ${areaBudgets.length} partidas de presupuesto.`}
+        title={`${areaLabel} - resumen`}
+        message={`${areaLabel} tiene ${areaExpenses.length} gastos registrados y ${areaBudgets.length} partidas de presupuesto desde el 1 de mayo.`}
         value={money.format(incomeTotal - total)}
         subvalue={area === "Casa" ? `Presupuesto estimado: ${money.format(budgetTotal)}` : `Dinero personal usado: ${money.format(personal)}`}
       />
@@ -1893,13 +2209,20 @@ function AreaDetailScreen({
         <MetricCard label="Ingresos" value={money.format(incomeTotal)} />
         <MetricCard label="Gastos" value={money.format(total)} />
         <MetricCard label="Balance" value={money.format(incomeTotal - total)} tone={incomeTotal - total < 0 ? "red" : "default"} />
-        <MetricCard label="Presupuesto" value={money.format(budgetTotal)} />
+        <MetricCard label="Meta diaria" value={money.format(dailyGoal)} />
       </div>
+
+      <CalmNotice text={area === "Casa" ? `Para sostener casa, el presupuesto diario estimado es ${money.format(dailyGoal)}.` : `Para cubrir ${areaLabel}, la meta diaria minima es ${money.format(dailyGoal)} con los gastos/presupuesto registrados.`} />
 
       <div className="grid gap-3 lg:grid-cols-3">
         <AreaButton label="Casa" value={money.format(expenses.filter((item) => item.type === "Casa").reduce((sum, item) => sum + item.amount, 0))} icon={Home} onClick={() => setScreen("home")} />
         <AreaButton label="Botica Spa" value={money.format(expenses.filter((item) => item.type === "Botica Spa").reduce((sum, item) => sum + item.amount, 0))} icon={Sparkles} onClick={() => setScreen("botica")} />
-        <AreaButton label="Walkme" value={money.format(expenses.filter((item) => item.type === "Walkme").reduce((sum, item) => sum + item.amount, 0))} icon={Store} onClick={() => setScreen("walkme")} />
+        <AreaButton label="Wokmi" value={money.format(expenses.filter((item) => item.type === "Walkme").reduce((sum, item) => sum + item.amount, 0))} icon={Store} onClick={() => setScreen("walkme")} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ExpenseEditor onSave={onSaveExpense} defaultType={area} />
+        {area !== "Casa" ? <IncomeEditor onSave={onSaveIncome} defaultType={area} /> : null}
       </div>
 
       <SectionTitle title="Presupuesto vs real" action="Editar presupuesto" onClick={() => setScreen("budget")} />
@@ -1991,7 +2314,7 @@ function CrisisScreen({
   );
 }
 
-function PlanBScreen({ totals }: { totals: ReturnType<typeof useTotalsShape> }) {
+function PlanBScreen({ totals, settings }: { totals: ReturnType<typeof useTotalsShape>; settings: AppSettings }) {
   const externalNeeded = Math.max(0, settings.monthlySurvivalAmount - settings.availableMoney);
   return (
     <div className="space-y-4">
@@ -2078,7 +2401,7 @@ function IncomeEditor({
 }) {
   const [draft, setDraft] = useState<Income>(
     income ?? {
-      id: `income-${Date.now()}`,
+      id: newRecordId(),
       date: "2026-05-01",
       source: "",
       type: defaultType,
@@ -2161,6 +2484,7 @@ function IncomeEditor({
     update("attachmentName", file.name);
     update("attachmentType", isPdf ? "pdf" : "image");
     update("attachmentUrl", isImage ? URL.createObjectURL(file) : undefined);
+    update("attachmentFile", file);
   }
 
   function submit() {
@@ -2175,7 +2499,7 @@ function IncomeEditor({
     });
     if (!income) {
       setDraft({
-        id: `income-${Date.now() + 1}`,
+        id: newRecordId(),
         date: "2026-05-01",
         source: "",
         type: defaultType,
@@ -2374,7 +2698,7 @@ function ExpenseEditor({
 }) {
   const [draft, setDraft] = useState<Expense>(
     expense ?? {
-      id: `expense-${Date.now()}`,
+      id: newRecordId(),
       date: "2026-05-01",
       name: "",
       amount: 0,
@@ -2384,6 +2708,7 @@ function ExpenseEditor({
       paidBy: "Compartido",
       due: "2026-05-01",
       paidPersonally: false,
+      notes: "",
       business: defaultType === "Botica Spa" || defaultType === "Walkme" ? defaultType : undefined
     }
   );
@@ -2411,7 +2736,7 @@ function ExpenseEditor({
     });
     if (!expense) {
       setDraft({
-        id: `expense-${Date.now() + 1}`,
+        id: newRecordId(),
         date: "2026-05-01",
         name: "",
         amount: 0,
@@ -2421,6 +2746,7 @@ function ExpenseEditor({
         paidBy: "Compartido",
         due: "2026-05-01",
         paidPersonally: false,
+        notes: "",
         business: defaultType === "Botica Spa" || defaultType === "Walkme" ? defaultType : undefined
       });
     }
@@ -2435,6 +2761,7 @@ function ExpenseEditor({
     update("attachmentName", file.name);
     update("attachmentType", isPdf ? "pdf" : "image");
     update("attachmentUrl", isImage ? URL.createObjectURL(file) : undefined);
+    update("attachmentFile", file);
   }
 
   return (
@@ -2546,6 +2873,15 @@ function ExpenseEditor({
         {draft.attachmentName ? (
           <AttachmentPreview name={draft.attachmentName} type={draft.attachmentType ?? "pdf"} url={draft.attachmentUrl} />
         ) : null}
+        <label className="grid gap-1">
+          <span className="text-sm font-medium text-slate-600">Descripcion manual</span>
+          <textarea
+            className="min-h-20 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none focus:border-slate-400"
+            value={draft.notes ?? ""}
+            onChange={(event) => update("notes", event.target.value)}
+            placeholder="Ej. Ticket de super, pago de luz o gasto de proveedor"
+          />
+        </label>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3">
         {onCancel ? (
@@ -2585,6 +2921,7 @@ function ExpenseItemCard({ expense, onEdit, onDelete }: { expense: Expense; onEd
       {expense.paidPersonally ? (
         <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-medium text-alert">Sale de dinero personal para negocio.</p>
       ) : null}
+      {expense.notes ? <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{expense.notes}</p> : null}
       {expense.attachmentName ? (
         <AttachmentPreview name={expense.attachmentName} type={expense.attachmentType ?? "pdf"} url={expense.attachmentUrl} />
       ) : null}
@@ -2967,7 +3304,7 @@ function titleFor(screen: Screen) {
     budget: "Presupuesto",
     home: "Casa",
     botica: "Botica Spa",
-    walkme: "Walkme",
+    walkme: "Wokmi",
     crisis: "Prioridades",
     planb: "Plan familiar"
   };
