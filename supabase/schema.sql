@@ -207,6 +207,31 @@ alter table upcoming_payments enable row level security;
 alter table agenda_items enable row level security;
 alter table weekly_reviews enable row level security;
 
+drop policy if exists "Allow public MVP read settings" on settings;
+drop policy if exists "Allow public MVP write settings" on settings;
+drop policy if exists "Allow public MVP read people" on people;
+drop policy if exists "Allow public MVP write people" on people;
+drop policy if exists "Allow public MVP read businesses" on businesses;
+drop policy if exists "Allow public MVP write businesses" on businesses;
+drop policy if exists "Allow public MVP read accounts" on accounts;
+drop policy if exists "Allow public MVP write accounts" on accounts;
+drop policy if exists "Allow public MVP read incomes" on incomes;
+drop policy if exists "Allow public MVP write incomes" on incomes;
+drop policy if exists "Allow public MVP read expenses" on expenses;
+drop policy if exists "Allow public MVP write expenses" on expenses;
+drop policy if exists "Allow public MVP read budget items" on budget_items;
+drop policy if exists "Allow public MVP write budget items" on budget_items;
+drop policy if exists "Allow public MVP read debts" on debts;
+drop policy if exists "Allow public MVP write debts" on debts;
+drop policy if exists "Allow public MVP read subscriptions" on subscriptions;
+drop policy if exists "Allow public MVP write subscriptions" on subscriptions;
+drop policy if exists "Allow public MVP read upcoming payments" on upcoming_payments;
+drop policy if exists "Allow public MVP write upcoming payments" on upcoming_payments;
+drop policy if exists "Allow public MVP read agenda items" on agenda_items;
+drop policy if exists "Allow public MVP write agenda items" on agenda_items;
+drop policy if exists "Allow public MVP read weekly reviews" on weekly_reviews;
+drop policy if exists "Allow public MVP write weekly reviews" on weekly_reviews;
+
 create policy "Allow public MVP read settings" on settings for select using (true);
 create policy "Allow public MVP write settings" on settings for all using (true) with check (true);
 create policy "Allow public MVP read people" on people for select using (true);
@@ -239,6 +264,11 @@ on conflict (id) do nothing;
 update storage.buckets
 set public = true
 where id = 'receipts';
+
+drop policy if exists "Allow public MVP read receipts" on storage.objects;
+drop policy if exists "Allow public MVP upload receipts" on storage.objects;
+drop policy if exists "Allow public MVP update receipts" on storage.objects;
+drop policy if exists "Allow public MVP delete receipts" on storage.objects;
 
 create policy "Allow public MVP read receipts" on storage.objects
 for select using (bucket_id = 'receipts');

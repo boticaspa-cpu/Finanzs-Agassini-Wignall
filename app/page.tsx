@@ -45,6 +45,7 @@ type Screen =
   | "subscriptions"
   | "payments"
   | "agenda"
+  | "pending"
   | "budget"
   | "home"
   | "botica"
@@ -615,7 +616,7 @@ const followUps = [
 
 const navItems = [
   { id: "dashboard" as Screen, label: "Inicio", icon: LayoutDashboard },
-  { id: "agenda" as Screen, label: "Agenda", icon: CalendarDays },
+  { id: "pending" as Screen, label: "Pend.", icon: ClipboardList },
   { id: "home" as Screen, label: "Casa", icon: Home },
   { id: "botica" as Screen, label: "Botica", icon: Sparkles },
   { id: "walkme" as Screen, label: "Walkme", icon: Store }
@@ -630,7 +631,7 @@ const quickActions = [
   { id: "payments" as Screen, label: "Agregar pago proximo", icon: CalendarClock },
   { id: "budget" as Screen, label: "Agregar presupuesto", icon: PiggyBank },
   { id: "agenda" as Screen, label: "Agregar actividad", icon: CalendarDays },
-  { id: "agenda" as Screen, label: "Agregar seguimiento", icon: ClipboardList }
+  { id: "pending" as Screen, label: "Agregar pendiente", icon: ClipboardList }
 ];
 
 function calcDays(amount: number, monthly: number) {
@@ -727,6 +728,24 @@ function budgetFromRow(row: Record<string, unknown>): BudgetItem {
   };
 }
 
+function agendaFromRow(row: Record<string, unknown>): AgendaItem {
+  return {
+    id: String(row.id),
+    title: String(row.title ?? ""),
+    description: String(row.description ?? ""),
+    date: String(row.date ?? "2026-05-01"),
+    time: String(row.time ?? "09:00").slice(0, 5),
+    type: String(row.type ?? "pending") as AgendaType,
+    area: String(row.area ?? "shared") as AgendaArea,
+    amount: Number(row.amount ?? 0),
+    priority: String(row.priority ?? "important") as AgendaPriority,
+    status: String(row.status ?? "pending") as AgendaStatus,
+    source: "agenda",
+    createdAt: String(row.created_at ?? "2026-05-01"),
+    updatedAt: String(row.updated_at ?? "2026-05-01")
+  };
+}
+
 function AppShell() {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -735,6 +754,7 @@ function AppShell() {
   const [incomes, setIncomes] = useState<Income[]>(initialIncomes);
   const [expenses, setExpenses] = useState<Expense[]>(initialExpenses);
   const [budgets, setBudgets] = useState<BudgetItem[]>(initialBudgets);
+  const [agendaItems, setAgendaItems] = useState<AgendaItem[]>(initialAgendaItems);
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultSettings);
   const [syncStatus, setSyncStatus] = useState("Conectando con Supabase...");
 
@@ -748,11 +768,12 @@ function AppShell() {
 
     async function loadRealData() {
       try {
-        const [settingsResponse, incomesResponse, expensesResponse, budgetsResponse] = await Promise.all([
+        const [settingsResponse, incomesResponse, expensesResponse, budgetsResponse, agendaResponse] = await Promise.all([
           supabase.from("settings").select("*").limit(1).maybeSingle(),
           supabase.from("incomes").select("*").gte("date", "2026-05-01").order("date", { ascending: false }),
           supabase.from("expenses").select("*").gte("date", "2026-05-01").order("date", { ascending: false }),
-          supabase.from("budget_items").select("*").order("created_at", { ascending: true })
+          supabase.from("budget_items").select("*").order("created_at", { ascending: true }),
+          supabase.from("agenda_items").select("*").gte("date", "2026-05-01").order("date", { ascending: true })
         ]);
 
         if (!active) return;
@@ -776,8 +797,11 @@ function AppShell() {
         if (budgetsResponse.data && budgetsResponse.data.length > 0) {
           setBudgets(budgetsResponse.data.map((row) => budgetFromRow(row)));
         }
+        if (agendaResponse.data && agendaResponse.data.length > 0) {
+          setAgendaItems(agendaResponse.data.map((row) => agendaFromRow(row)));
+        }
 
-        const firstError = settingsResponse.error ?? incomesResponse.error ?? expensesResponse.error ?? budgetsResponse.error;
+        const firstError = settingsResponse.error ?? incomesResponse.error ?? expensesResponse.error ?? budgetsResponse.error ?? agendaResponse.error;
         setSyncStatus(firstError ? "Supabase necesita el SQL de tablas. Mientras tanto ves datos base." : "Guardado real activo desde el 1 de mayo.");
       } catch {
         if (active) {
@@ -962,6 +986,49 @@ function AppShell() {
     }
   }
 
+  async function saveAgendaRecord(item: AgendaItem) {
+    const payload = {
+      ...(isUuid(item.id) ? { id: item.id } : {}),
+      title: item.title,
+      description: item.description,
+      date: item.date,
+      time: item.time,
+      type: item.type,
+      area: item.area,
+      amount: item.amount,
+      priority: item.priority,
+      status: item.status,
+      updated_at: new Date().toISOString()
+    };
+    const { data, error } = await supabase.from("agenda_items").upsert(payload).select().single();
+    if (error) {
+      setSyncStatus(`No se guardo pendiente: ${error.message}`);
+      return;
+    }
+    const saved = agendaFromRow(data);
+    setAgendaItems((current) => {
+      const exists = current.some((entry) => entry.id === item.id || entry.id === saved.id);
+      return exists ? current.map((entry) => (entry.id === item.id || entry.id === saved.id ? saved : entry)) : [saved, ...current];
+    });
+    setSyncStatus("Pendiente guardado en Supabase.");
+  }
+
+  async function updateAgendaStatus(id: string, status: AgendaStatus) {
+    setAgendaItems((current) => current.map((item) => (item.id === id ? { ...item, status, updatedAt: new Date().toISOString() } : item)));
+    if (isUuid(id)) {
+      const { error } = await supabase.from("agenda_items").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
+      setSyncStatus(error ? `No se actualizo pendiente: ${error.message}` : "Pendiente actualizado.");
+    }
+  }
+
+  async function deleteAgendaRecord(id: string) {
+    setAgendaItems((current) => current.filter((item) => item.id !== id));
+    if (isUuid(id)) {
+      const { error } = await supabase.from("agenda_items").delete().eq("id", id);
+      setSyncStatus(error ? `No se borro pendiente: ${error.message}` : "Pendiente borrado.");
+    }
+  }
+
   function login(user: string) {
     window.localStorage.setItem("control30-user", user);
     setCurrentUser(user);
@@ -1051,7 +1118,8 @@ function AppShell() {
         {screen === "debts" && <DebtsScreen />}
         {screen === "subscriptions" && <SubscriptionsScreen />}
         {screen === "payments" && <PaymentsScreen />}
-        {screen === "agenda" && <AgendaScreen />}
+        {screen === "agenda" && <AgendaScreen storedItems={agendaItems} onSaveItem={(item) => void saveAgendaRecord(item)} onUpdateStatus={(id, status) => void updateAgendaStatus(id, status)} onDeleteItem={(id) => void deleteAgendaRecord(id)} />}
+        {screen === "pending" && <PendingScreen items={agendaItems} onSaveItem={(item) => void saveAgendaRecord(item)} onUpdateStatus={(id, status) => void updateAgendaStatus(id, status)} onDeleteItem={(id) => void deleteAgendaRecord(id)} />}
         {screen === "home" && <AreaDetailScreen area="Casa" expenses={expenses} incomes={incomes} budgets={budgets} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
         {screen === "botica" && <AreaDetailScreen area="Botica Spa" expenses={expenses} incomes={incomes} budgets={budgets} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
         {screen === "walkme" && <AreaDetailScreen area="Walkme" expenses={expenses} incomes={incomes} budgets={budgets} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
@@ -1228,6 +1296,13 @@ function Dashboard({
       <div className="grid gap-3 lg:grid-cols-2">
         <InsightRow icon={Clock3} label="Pendientes de hoy" value="3 actividades" tone="yellow" />
         <InsightRow icon={ClipboardList} label="Seguimientos abiertos" value="4 seguimientos" />
+      </div>
+
+      <SectionTitle title="Pendientes por area" action="Ver pendientes" onClick={() => setScreen("pending")} />
+      <div className="grid gap-3 lg:grid-cols-3">
+        <AreaButton label="Casa" value="Compras y tareas" icon={Home} onClick={() => setScreen("pending")} />
+        <AreaButton label="Botica Spa" value="Limpieza y marketing" icon={Sparkles} onClick={() => setScreen("pending")} />
+        <AreaButton label="Walkme" value="Fotos y campanas" icon={Store} onClick={() => setScreen("pending")} />
       </div>
 
       <SectionTitle title="Lo importante esta semana" action="Ver prioridades" onClick={() => setScreen("crisis")} />
@@ -1773,12 +1848,121 @@ function sumAgendaAmount(items: AgendaItem[]) {
   return items.reduce((sum, item) => sum + item.amount, 0);
 }
 
-function AgendaScreen() {
+function PendingScreen({
+  items,
+  onSaveItem,
+  onUpdateStatus,
+  onDeleteItem
+}: {
+  items: AgendaItem[];
+  onSaveItem: (item: AgendaItem) => void;
+  onUpdateStatus: (id: string, status: AgendaStatus) => void;
+  onDeleteItem: (id: string) => void;
+}) {
+  const [selectedArea, setSelectedArea] = useState<"Todos" | AgendaArea>("Todos");
+  const [editingItem, setEditingItem] = useState<AgendaItem | null>(null);
+  const pendingTypes: AgendaType[] = ["task", "pending", "reminder", "sale"];
+  const pendingItems = items.filter((item) => pendingTypes.includes(item.type));
+  const openItems = pendingItems.filter((item) => !["done", "paid"].includes(item.status));
+  const visibleItems = selectedArea === "Todos" ? pendingItems : pendingItems.filter((item) => item.area === selectedArea);
+  const areaTotals = Object.fromEntries(
+    (["home", "botica_spa", "walkme", "maria", "gina", "shared"] as AgendaArea[]).map((area) => [
+      agendaAreaLabel(area),
+      pendingItems.filter((item) => item.area === area && !["done", "paid"].includes(item.status)).length
+    ])
+  );
+
+  function saveItem(item: AgendaItem) {
+    onSaveItem({ ...item, type: item.type === "payment" || item.type === "debt" || item.type === "subscription" ? "pending" : item.type });
+    setEditingItem(null);
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-3xl bg-white p-5 shadow-sm">
+        <h2 className="text-3xl font-bold tracking-normal">Pendientes</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Tareas por casa, Botica Spa y Walkme: compras, limpieza, fotos, campanas y seguimientos.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MetricCard label="Abiertos" value={`${openItems.length}`} />
+        <MetricCard label="Casa" value={`${pendingItems.filter((item) => item.area === "home" && !["done", "paid"].includes(item.status)).length}`} />
+        <MetricCard label="Botica Spa" value={`${pendingItems.filter((item) => item.area === "botica_spa" && !["done", "paid"].includes(item.status)).length}`} />
+        <MetricCard label="Walkme" value={`${pendingItems.filter((item) => item.area === "walkme" && !["done", "paid"].includes(item.status)).length}`} />
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
+        <aside className="space-y-4">
+          <Card>
+            <p className="mb-3 font-bold">{editingItem ? "Editar pendiente" : "Nuevo pendiente"}</p>
+            <AgendaItemForm
+              item={editingItem ?? undefined}
+              defaultType="pending"
+              defaultArea={selectedArea === "Todos" ? "home" : selectedArea}
+              onSave={saveItem}
+            />
+            {editingItem ? (
+              <button className="mt-3 min-h-11 w-full rounded-xl bg-slate-100 px-3 font-semibold text-slate-700" onClick={() => setEditingItem(null)}>
+                Cancelar edicion
+              </button>
+            ) : null}
+          </Card>
+          <CalmNotice text="Ejemplos: comprar comida hijes, limpiar el refri, cambiar fotos en Walkme, limpiar sabanas Botica Spa, sacar campana de marketing." />
+        </aside>
+
+        <section className="space-y-4">
+          <div className="overflow-x-auto no-scrollbar">
+            <div className="flex gap-2">
+              {(["Todos", "home", "botica_spa", "walkme", "maria", "gina", "shared"] as const).map((area) => {
+                const label = area === "Todos" ? "Todos" : agendaAreaLabel(area);
+                const selected = selectedArea === area;
+                return (
+                  <button
+                    key={area}
+                    className={`min-h-11 shrink-0 rounded-xl px-4 text-sm font-bold ${selected ? "bg-ink text-white" : "bg-white text-slate-700 shadow-sm"}`}
+                    onClick={() => setSelectedArea(area)}
+                  >
+                    {label} {area !== "Todos" ? `(${areaTotals[label] ?? 0})` : ""}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <AgendaDayGroup
+            title={selectedArea === "Todos" ? "Todos los pendientes" : agendaAreaLabel(selectedArea)}
+            subtitle={`${visibleItems.length} registros`}
+            items={visibleItems}
+            onDone={(id) => onUpdateStatus(id, "done")}
+            onPaid={(id) => onUpdateStatus(id, "paid")}
+            onNegotiated={(id) => onUpdateStatus(id, "negotiated")}
+            onEdit={(item) => setEditingItem(item)}
+            onDelete={onDeleteItem}
+          />
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function AgendaScreen({
+  storedItems,
+  onSaveItem,
+  onUpdateStatus,
+  onDeleteItem
+}: {
+  storedItems: AgendaItem[];
+  onSaveItem: (item: AgendaItem) => void;
+  onUpdateStatus: (id: string, status: AgendaStatus) => void;
+  onDeleteItem: (id: string) => void;
+}) {
   const [tab, setTab] = useState<"Hoy" | "Semana" | "Mes" | "Atrasados" | "Pagados">("Semana");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [formType, setFormType] = useState<AgendaType | null>(null);
   const [editingItem, setEditingItem] = useState<AgendaItem | null>(null);
-  const [items, setItems] = useState<AgendaItem[]>(() => [...upcomingPayments.map(paymentToAgendaItem), ...initialAgendaItems]);
+  const items = useMemo(() => [...upcomingPayments.map(paymentToAgendaItem), ...storedItems], [storedItems]);
   const weekDays = [
     { label: "Hoy", day: "Vie", date: "2026-05-01" },
     { label: "Sabado", day: "Sab", date: "2026-05-02" },
@@ -1798,24 +1982,18 @@ function AgendaScreen() {
     tab === "Hoy" ? todayItems : tab === "Semana" ? weekItems : tab === "Mes" ? items : tab === "Atrasados" ? overdueItems : paidItems;
 
   function saveItem(item: AgendaItem) {
-    setItems((current) => {
-      const exists = current.some((entry) => entry.id === item.id);
-      if (exists) {
-        return current.map((entry) => (entry.id === item.id ? { ...item, updatedAt: "2026-05-01" } : entry));
-      }
-      return [{ ...item, updatedAt: "2026-05-01" }, ...current];
-    });
+    onSaveItem({ ...item, updatedAt: new Date().toISOString() });
     setDrawerOpen(false);
     setFormType(null);
     setEditingItem(null);
   }
 
   function updateStatus(id: string, status: AgendaStatus) {
-    setItems((current) => current.map((item) => (item.id === id ? { ...item, status, updatedAt: "2026-05-01" } : item)));
+    onUpdateStatus(id, status);
   }
 
   function deleteItem(id: string) {
-    setItems((current) => current.filter((item) => item.id !== id));
+    onDeleteItem(id);
   }
 
   function openForm(type: AgendaType) {
@@ -2087,22 +2265,32 @@ function AgendaDrawer({
   );
 }
 
-function AgendaItemForm({ item, defaultType, onSave }: { item?: AgendaItem; defaultType: AgendaType; onSave: (item: AgendaItem) => void }) {
+function AgendaItemForm({
+  item,
+  defaultType,
+  defaultArea = "shared",
+  onSave
+}: {
+  item?: AgendaItem;
+  defaultType: AgendaType;
+  defaultArea?: AgendaArea;
+  onSave: (item: AgendaItem) => void;
+}) {
   const [draft, setDraft] = useState<AgendaItem>(
     item ?? {
-      id: `agenda-${Date.now()}`,
+      id: newRecordId(),
       title: "",
       description: "",
       date: "2026-05-01",
       time: "09:00",
       type: defaultType,
-      area: "shared",
+      area: defaultArea,
       amount: 0,
       priority: defaultType === "payment" || defaultType === "debt" ? "must_pay" : "important",
       status: "pending",
       source: "agenda",
-      createdAt: "2026-05-01",
-      updatedAt: "2026-05-01"
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     }
   );
 
@@ -3301,6 +3489,7 @@ function titleFor(screen: Screen) {
     subscriptions: "Suscripciones",
     payments: "Pagos proximos",
     agenda: "Agenda",
+    pending: "Pendientes",
     budget: "Presupuesto",
     home: "Casa",
     botica: "Botica Spa",
