@@ -82,6 +82,18 @@ create table if not exists expenses (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists budget_items (
+  id uuid primary key default gen_random_uuid(),
+  area text not null,
+  category text not null,
+  name text not null,
+  kind text not null default 'variable',
+  planned_amount numeric not null default 0,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists debts (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -188,6 +200,7 @@ alter table businesses enable row level security;
 alter table accounts enable row level security;
 alter table incomes enable row level security;
 alter table expenses enable row level security;
+alter table budget_items enable row level security;
 alter table debts enable row level security;
 alter table subscriptions enable row level security;
 alter table upcoming_payments enable row level security;
@@ -206,6 +219,8 @@ create policy "Allow public MVP read incomes" on incomes for select using (true)
 create policy "Allow public MVP write incomes" on incomes for all using (true) with check (true);
 create policy "Allow public MVP read expenses" on expenses for select using (true);
 create policy "Allow public MVP write expenses" on expenses for all using (true) with check (true);
+create policy "Allow public MVP read budget items" on budget_items for select using (true);
+create policy "Allow public MVP write budget items" on budget_items for all using (true) with check (true);
 create policy "Allow public MVP read debts" on debts for select using (true);
 create policy "Allow public MVP write debts" on debts for all using (true) with check (true);
 create policy "Allow public MVP read subscriptions" on subscriptions for select using (true);

@@ -44,6 +44,7 @@ type Screen =
   | "subscriptions"
   | "payments"
   | "agenda"
+  | "budget"
   | "botica"
   | "walkme"
   | "crisis"
@@ -84,6 +85,16 @@ type Income = {
 };
 type ExpenseFilter = "Todos" | ExpenseArea;
 type IncomeFilter = "Todos" | IncomeArea;
+type BudgetKind = "fixed" | "variable";
+type BudgetItem = {
+  id: string;
+  area: "Casa" | "Botica Spa" | "Walkme" | "Compartido";
+  category: string;
+  name: string;
+  kind: BudgetKind;
+  plannedAmount: number;
+  notes: string;
+};
 type AgendaType = "payment" | "task" | "debt" | "subscription" | "reminder" | "sale" | "pending";
 type AgendaArea = "home" | "maria" | "gina" | "shared" | "botica_spa" | "walkme";
 type AgendaPriority = "urgent" | "must_pay" | "important" | "negotiable" | "pause" | "low";
@@ -333,6 +344,72 @@ const initialExpenses: Expense[] = [
   }
 ];
 
+const initialBudgets: BudgetItem[] = [
+  {
+    id: "budget-home-rent",
+    area: "Casa",
+    category: "Renta",
+    name: "Renta casa",
+    kind: "fixed",
+    plannedAmount: 14500,
+    notes: "Pago fijo mensual"
+  },
+  {
+    id: "budget-home-groceries",
+    area: "Casa",
+    category: "Comida",
+    name: "Super y comida",
+    kind: "variable",
+    plannedAmount: 8000,
+    notes: "Estimado inicial; ajustar con tickets reales"
+  },
+  {
+    id: "budget-home-utilities",
+    area: "Casa",
+    category: "Servicios",
+    name: "Luz, agua, internet",
+    kind: "fixed",
+    plannedAmount: 2800,
+    notes: "Estimado hasta capturar recibos reales"
+  },
+  {
+    id: "budget-botica-ads",
+    area: "Botica Spa",
+    category: "Publicidad",
+    name: "Publicidad Botica Spa",
+    kind: "variable",
+    plannedAmount: 2800,
+    notes: "Pausable si no hay ventas"
+  },
+  {
+    id: "budget-walkme-rent",
+    area: "Walkme",
+    category: "Renta local",
+    name: "Renta Walkme",
+    kind: "fixed",
+    plannedAmount: 6000,
+    notes: "Gasto fijo del negocio"
+  },
+  {
+    id: "budget-walkme-taxes",
+    area: "Walkme",
+    category: "Impuestos",
+    name: "Impuestos Walkme",
+    kind: "fixed",
+    plannedAmount: 7000,
+    notes: "Revisar contra pago real"
+  },
+  {
+    id: "budget-walkme-services",
+    area: "Walkme",
+    category: "Servicios",
+    name: "Luz y Telmex Walkme",
+    kind: "fixed",
+    plannedAmount: 2000,
+    notes: "Estimado con luz y Telmex"
+  }
+];
+
 const debts = [
   {
     name: "Tarjeta Gina",
@@ -528,8 +605,8 @@ const navItems = [
   { id: "dashboard" as Screen, label: "Inicio", icon: LayoutDashboard },
   { id: "agenda" as Screen, label: "Agenda", icon: CalendarDays },
   { id: "expenses" as Screen, label: "Gastos", icon: ReceiptText },
-  { id: "botica" as Screen, label: "Negocios", icon: Store },
-  { id: "crisis" as Screen, label: "Prioridad", icon: ShieldAlert }
+  { id: "budget" as Screen, label: "Presup.", icon: PiggyBank },
+  { id: "botica" as Screen, label: "Negocios", icon: Store }
 ];
 
 const quickActions = [
@@ -539,6 +616,7 @@ const quickActions = [
   { id: "debts" as Screen, label: "Agregar deuda", icon: Landmark },
   { id: "subscriptions" as Screen, label: "Agregar suscripcion", icon: Bell },
   { id: "payments" as Screen, label: "Agregar pago proximo", icon: CalendarClock },
+  { id: "budget" as Screen, label: "Agregar presupuesto", icon: PiggyBank },
   { id: "agenda" as Screen, label: "Agregar actividad", icon: CalendarDays },
   { id: "agenda" as Screen, label: "Agregar seguimiento", icon: ClipboardList }
 ];
@@ -565,6 +643,7 @@ function AppShell() {
   const [quickOpen, setQuickOpen] = useState(false);
   const [incomes, setIncomes] = useState<Income[]>(initialIncomes);
   const [expenses, setExpenses] = useState<Expense[]>(initialExpenses);
+  const [budgets, setBudgets] = useState<BudgetItem[]>(initialBudgets);
 
   useEffect(() => {
     setCurrentUser(window.localStorage.getItem("control30-user"));
@@ -696,6 +775,7 @@ function AppShell() {
         {screen === "dashboard" && <Dashboard totals={totals} setScreen={setScreen} />}
         {screen === "incomes" && <IncomeScreen incomes={incomes} setIncomes={setIncomes} />}
         {screen === "expenses" && <ExpenseScreen expenses={expenses} setExpenses={setExpenses} />}
+        {screen === "budget" && <BudgetScreen budgets={budgets} setBudgets={setBudgets} expenses={expenses} setScreen={setScreen} />}
         {screen === "accounts" && <AccountsScreen />}
         {screen === "debts" && <DebtsScreen />}
         {screen === "subscriptions" && <SubscriptionsScreen />}
@@ -886,6 +966,12 @@ function Dashboard({
         <AreaButton label="Walkme" value={money.format(totals.walkmeExpenses)} icon={Store} onClick={() => setScreen("walkme")} />
       </div>
 
+      <SectionTitle title="Presupuesto" action="Ver presupuesto" onClick={() => setScreen("budget")} />
+      <div className="grid gap-3 lg:grid-cols-2">
+        <InsightRow icon={PiggyBank} label="Super estimado" value={money.format(8000)} tone="yellow" />
+        <InsightRow icon={ReceiptText} label="Carga tickets para ver el real" value="Foto, PDF o manual" />
+      </div>
+
       <CalmNotice text="Recomendacion: pagar renta y minimo de tarjeta, negociar proveedor Walkme y pausar publicidad esta semana." />
     </div>
   );
@@ -1019,6 +1105,253 @@ function ExpenseScreen({
         )}
       </div>
     </div>
+  );
+}
+
+function BudgetScreen({
+  budgets,
+  setBudgets,
+  expenses,
+  setScreen
+}: {
+  budgets: BudgetItem[];
+  setBudgets: React.Dispatch<React.SetStateAction<BudgetItem[]>>;
+  expenses: Expense[];
+  setScreen: (screen: Screen) => void;
+}) {
+  const [selectedArea, setSelectedArea] = useState<"Todos" | BudgetItem["area"]>("Todos");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const visibleBudgets = selectedArea === "Todos" ? budgets : budgets.filter((item) => item.area === selectedArea);
+  const plannedTotal = visibleBudgets.reduce((sum, item) => sum + item.plannedAmount, 0);
+  const actualTotal = visibleBudgets.reduce((sum, item) => sum + budgetActual(item, expenses), 0);
+  const fixedTotal = visibleBudgets.filter((item) => item.kind === "fixed").reduce((sum, item) => sum + item.plannedAmount, 0);
+  const variableTotal = visibleBudgets.filter((item) => item.kind === "variable").reduce((sum, item) => sum + item.plannedAmount, 0);
+
+  function saveBudget(item: BudgetItem) {
+    setBudgets((current) => {
+      const exists = current.some((entry) => entry.id === item.id);
+      if (exists) {
+        return current.map((entry) => (entry.id === item.id ? item : entry));
+      }
+      return [item, ...current];
+    });
+    setEditingId(null);
+  }
+
+  function deleteBudget(id: string) {
+    setBudgets((current) => current.filter((item) => item.id !== id));
+    if (editingId === id) {
+      setEditingId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-3xl bg-white p-5 shadow-sm">
+        <h2 className="text-3xl font-bold tracking-normal">Presupuesto</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Planea gastos fijos y variables. Cada gasto real que registres con ticket, PDF o manual se compara contra el estimado.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MetricCard label="Presupuestado" value={money.format(plannedTotal)} />
+        <MetricCard label="Real gastado" value={money.format(actualTotal)} tone={actualTotal > plannedTotal ? "red" : "default"} />
+        <MetricCard label="Gastos fijos" value={money.format(fixedTotal)} />
+        <MetricCard label="Variables" value={money.format(variableTotal)} />
+      </div>
+
+      <AreaFilterTabs
+        areas={["Todos", "Casa", "Botica Spa", "Walkme", "Compartido"]}
+        selected={selectedArea}
+        totals={Object.fromEntries(
+          ["Casa", "Botica Spa", "Walkme", "Compartido"].map((area) => [
+            area,
+            budgets.filter((item) => item.area === area).reduce((sum, item) => sum + item.plannedAmount, 0)
+          ])
+        )}
+        onSelect={(area) => setSelectedArea(area as "Todos" | BudgetItem["area"])}
+      />
+
+      <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
+        <aside className="space-y-4">
+          <BudgetEditor onSave={saveBudget} defaultArea={selectedArea === "Todos" ? "Casa" : selectedArea} />
+          <CalmNotice text="Ejemplo: si crees que el super es $8,000, ponlo como variable. Cada ticket de super registrado en Gastos sube el gasto real." />
+          <button className="min-h-12 w-full rounded-2xl bg-ink px-4 font-semibold text-white" onClick={() => setScreen("expenses")}>
+            Cargar ticket o gasto real
+          </button>
+        </aside>
+
+        <section className="space-y-3">
+          <SectionTitle title={`${selectedArea} - comparativo`} />
+          {visibleBudgets.length === 0 ? (
+            <EmptyState text="No hay partidas de presupuesto en esta seccion." />
+          ) : (
+            visibleBudgets.map((item) =>
+              editingId === item.id ? (
+                <BudgetEditor key={item.id} budget={item} onSave={saveBudget} onCancel={() => setEditingId(null)} />
+              ) : (
+                <BudgetItemCard
+                  key={item.id}
+                  budget={item}
+                  actual={budgetActual(item, expenses)}
+                  onEdit={() => setEditingId(item.id)}
+                  onDelete={() => deleteBudget(item.id)}
+                />
+              )
+            )
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function budgetActual(budget: BudgetItem, expenses: Expense[]) {
+  return expenses
+    .filter((expense) => expense.type === budget.area && normalizeText(expense.category) === normalizeText(budget.category))
+    .reduce((sum, expense) => sum + expense.amount, 0);
+}
+
+function normalizeText(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function BudgetEditor({
+  budget,
+  defaultArea,
+  onSave,
+  onCancel
+}: {
+  budget?: BudgetItem;
+  defaultArea?: BudgetItem["area"];
+  onSave: (item: BudgetItem) => void;
+  onCancel?: () => void;
+}) {
+  const [draft, setDraft] = useState<BudgetItem>(
+    budget ?? {
+      id: `budget-${Date.now()}`,
+      area: defaultArea ?? "Casa",
+      category: "",
+      name: "",
+      kind: "variable",
+      plannedAmount: 0,
+      notes: ""
+    }
+  );
+
+  function update<K extends keyof BudgetItem>(key: K, value: BudgetItem[K]) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function submit() {
+    if (!draft.name.trim() || !draft.category.trim()) {
+      return;
+    }
+    onSave({
+      ...draft,
+      name: draft.name.trim(),
+      category: draft.category.trim(),
+      plannedAmount: Number.isFinite(draft.plannedAmount) ? draft.plannedAmount : 0
+    });
+    if (!budget) {
+      setDraft({
+        id: `budget-${Date.now() + 1}`,
+        area: defaultArea ?? "Casa",
+        category: "",
+        name: "",
+        kind: "variable",
+        plannedAmount: 0,
+        notes: ""
+      });
+    }
+  }
+
+  return (
+    <Card>
+      <p className="mb-3 font-semibold">{budget ? "Editar presupuesto" : "Agregar presupuesto"}</p>
+      <div className="grid gap-3">
+        <label className="grid gap-1">
+          <span className="text-sm font-semibold text-slate-600">Nombre</span>
+          <input className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.name} onChange={(event) => update("name", event.target.value)} placeholder="Ej. Super y comida" />
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="grid gap-1">
+            <span className="text-sm font-semibold text-slate-600">Area</span>
+            <select className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.area} onChange={(event) => update("area", event.target.value as BudgetItem["area"])}>
+              {["Casa", "Botica Spa", "Walkme", "Compartido"].map((area) => (
+                <option key={area} value={area}>{area}</option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1">
+            <span className="text-sm font-semibold text-slate-600">Tipo</span>
+            <select className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.kind} onChange={(event) => update("kind", event.target.value as BudgetKind)}>
+              <option value="fixed">Fijo</option>
+              <option value="variable">Variable</option>
+            </select>
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="grid gap-1">
+            <span className="text-sm font-semibold text-slate-600">Categoria</span>
+            <input className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.category} onChange={(event) => update("category", event.target.value)} placeholder="Comida" />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-sm font-semibold text-slate-600">Estimado</span>
+            <input className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" inputMode="decimal" value={draft.plannedAmount || ""} onChange={(event) => update("plannedAmount", Number(event.target.value))} placeholder="0" />
+          </label>
+        </div>
+        <label className="grid gap-1">
+          <span className="text-sm font-semibold text-slate-600">Notas</span>
+          <textarea className="min-h-20 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none" value={draft.notes} onChange={(event) => update("notes", event.target.value)} placeholder="Ej. Aun no estoy segura; ajustar con tickets" />
+        </label>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        {onCancel ? (
+          <button className="min-h-12 rounded-xl bg-slate-100 px-4 font-semibold text-slate-700" onClick={onCancel}>Cancelar</button>
+        ) : null}
+        <button className={`${onCancel ? "" : "col-span-2"} min-h-12 rounded-xl bg-ink px-4 font-semibold text-white disabled:opacity-50`} onClick={submit} disabled={!draft.name.trim() || !draft.category.trim()}>
+          Guardar presupuesto
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+function BudgetItemCard({ budget, actual, onEdit, onDelete }: { budget: BudgetItem; actual: number; onEdit: () => void; onDelete: () => void }) {
+  const difference = budget.plannedAmount - actual;
+  const progress = budget.plannedAmount > 0 ? Math.min(100, Math.round((actual / budget.plannedAmount) * 100)) : 0;
+
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-bold">{budget.name}</p>
+          <p className="mt-1 text-sm text-slate-500">
+            {budget.area} - {budget.category} - {budget.kind === "fixed" ? "Fijo" : "Variable"}
+          </p>
+        </div>
+        <StatusPill label={difference >= 0 ? "Dentro" : "Pasado"} tone={difference >= 0 ? "green" : "red"} />
+      </div>
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        <SmallInfo icon={PiggyBank} label="Estimado" value={money.format(budget.plannedAmount)} />
+        <SmallInfo icon={ReceiptText} label="Real" value={money.format(actual)} />
+        <SmallInfo icon={MinusCircle} label="Diferencia" value={money.format(difference)} />
+      </div>
+      <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100">
+        <div className={`h-full ${actual > budget.plannedAmount ? "bg-emergency" : "bg-stable"}`} style={{ width: `${progress}%` }} />
+      </div>
+      {budget.notes ? <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{budget.notes}</p> : null}
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button className="min-h-11 rounded-xl bg-slate-100 px-3 font-semibold text-slate-700" onClick={onEdit}>
+          Editar
+        </button>
+        <button className="min-h-11 rounded-xl bg-red-50 px-3 font-semibold text-emergency" onClick={onDelete}>
+          Borrar
+        </button>
+      </div>
+    </Card>
   );
 }
 
@@ -2604,6 +2937,7 @@ function titleFor(screen: Screen) {
     subscriptions: "Suscripciones",
     payments: "Pagos proximos",
     agenda: "Agenda",
+    budget: "Presupuesto",
     botica: "Botica Spa",
     walkme: "Walkme",
     crisis: "Prioridades",
