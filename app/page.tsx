@@ -657,6 +657,15 @@ function priorityLabel(priority: Priority) {
   return labels[priority];
 }
 
+function todayDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function incomeTypeForArea(area: "Casa" | "Botica Spa" | "Walkme" | "Personal Gina" | "Personal Maria"): IncomeArea {
+  if (area === "Botica Spa" || area === "Walkme" || area === "Personal Gina" || area === "Personal Maria") return area;
+  return "Compartido";
+}
+
 function readStoredList<T>(key: string, fallback: T[]) {
   if (typeof window === "undefined") return fallback;
   try {
@@ -2504,9 +2513,15 @@ function AreaDetailScreen({
         <AreaButton label="Maria" value={money.format(expenses.filter((item) => item.type === "Personal Maria").reduce((sum, item) => sum + item.amount, 0))} icon={UserRound} onClick={() => setScreen("maria")} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ExpenseEditor onSave={onSaveExpense} defaultType={area} />
-        {area !== "Casa" ? <IncomeEditor onSave={onSaveIncome} defaultType={area} /> : null}
+      <QuickMoneyCapture area={area} onSaveExpense={onSaveExpense} onSaveIncome={onSaveIncome} />
+
+      <div className="grid grid-cols-2 gap-3">
+        <button className="min-h-12 rounded-2xl bg-white px-4 font-semibold text-slate-700 shadow-sm" onClick={() => setScreen("expenses")}>
+          Captura detallada de gasto
+        </button>
+        <button className="min-h-12 rounded-2xl bg-white px-4 font-semibold text-slate-700 shadow-sm" onClick={() => setScreen("incomes")}>
+          Captura detallada de ingreso
+        </button>
       </div>
 
       <SectionTitle title="Presupuesto vs real" action="Editar presupuesto" onClick={() => setScreen("budget")} />
@@ -2558,6 +2573,147 @@ function topExpenseCategory(expenses: Expense[]) {
   }, {});
   const [label, amount] = Object.entries(totals).sort((a, b) => b[1] - a[1])[0] ?? ["Sin gastos", 0];
   return { label, amount };
+}
+
+function QuickMoneyCapture({
+  area,
+  onSaveExpense,
+  onSaveIncome
+}: {
+  area: "Casa" | "Botica Spa" | "Walkme" | "Personal Gina" | "Personal Maria";
+  onSaveExpense: (expense: Expense) => void;
+  onSaveIncome: (income: Income) => void;
+}) {
+  const [mode, setMode] = useState<"expense" | "income">("expense");
+  const [title, setTitle] = useState("");
+  const [amount, setAmount] = useState("");
+  const [category, setCategory] = useState("");
+  const [date, setDate] = useState(todayDate());
+  const [notes, setNotes] = useState("");
+  const [file, setFile] = useState<File | undefined>();
+  const areaLabel = area === "Personal Gina" ? "Gina" : area === "Personal Maria" ? "Maria" : area;
+
+  function reset() {
+    setTitle("");
+    setAmount("");
+    setCategory("");
+    setNotes("");
+    setFile(undefined);
+  }
+
+  function save() {
+    const numericAmount = Number(amount);
+    if (!title.trim() || !Number.isFinite(numericAmount) || numericAmount <= 0) return;
+    const isPdf = file?.type === "application/pdf";
+    const isImage = Boolean(file?.type.startsWith("image/"));
+
+    if (mode === "income") {
+      const incomeType = incomeTypeForArea(area);
+      onSaveIncome({
+        id: newRecordId(),
+        date,
+        source: title.trim(),
+        type: incomeType,
+        amount: numericAmount,
+        account: "Cuenta Maria",
+        method: "Manual",
+        notes: notes.trim(),
+        business: incomeType === "Botica Spa" || incomeType === "Walkme" ? incomeType : undefined,
+        attachmentName: file?.name,
+        attachmentType: file ? (isPdf ? "pdf" : "image") : undefined,
+        attachmentUrl: isImage && file ? URL.createObjectURL(file) : undefined,
+        attachmentFile: file
+      });
+    } else {
+      onSaveExpense({
+        id: newRecordId(),
+        date,
+        name: title.trim(),
+        amount: numericAmount,
+        type: area,
+        category: category.trim() || "Sin categoria",
+        priority: "important",
+        paidBy: area === "Personal Gina" ? "Gina" : area === "Personal Maria" ? "Maria" : "Compartido",
+        due: date,
+        business: area === "Botica Spa" || area === "Walkme" ? area : undefined,
+        paidPersonally: area === "Botica Spa" || area === "Walkme",
+        notes: notes.trim(),
+        attachmentName: file?.name,
+        attachmentType: file ? (isPdf ? "pdf" : "image") : undefined,
+        attachmentUrl: isImage && file ? URL.createObjectURL(file) : undefined,
+        attachmentFile: file
+      });
+    }
+    reset();
+  }
+
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-bold">Captura rapida</p>
+          <p className="mt-1 text-sm text-slate-500">Agrega ingresos o egresos de {areaLabel} sin llenar todo el formulario.</p>
+        </div>
+        <div className="grid grid-cols-2 rounded-2xl bg-slate-100 p-1 text-sm font-bold">
+          <button className={`rounded-xl px-3 py-2 ${mode === "expense" ? "bg-white text-ink shadow-sm" : "text-slate-500"}`} onClick={() => setMode("expense")}>
+            Egreso
+          </button>
+          <button className={`rounded-xl px-3 py-2 ${mode === "income" ? "bg-white text-ink shadow-sm" : "text-slate-500"}`} onClick={() => setMode("income")}>
+            Ingreso
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        <input
+          className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder={mode === "income" ? "Ej. venta, deposito, apoyo" : "Ej. super, luz, sabanas, publicidad"}
+        />
+        <div className="grid grid-cols-2 gap-3">
+          <input
+            className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+            inputMode="decimal"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            placeholder="Monto"
+          />
+          <input
+            className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+            placeholder={mode === "income" ? "Categoria opcional" : "Categoria"}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <input
+            className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+            type="date"
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
+          />
+          <input
+            className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm"
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={(event) => setFile(event.target.files?.[0])}
+          />
+        </div>
+        <textarea
+          className="min-h-20 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none focus:border-slate-400"
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          placeholder="Descripcion manual opcional"
+        />
+        {file ? <p className="rounded-xl bg-green-50 p-3 text-sm font-semibold text-stable">Comprobante listo: {file.name}</p> : null}
+        <button className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-ink px-4 font-semibold text-white disabled:opacity-50" disabled={!title.trim() || !amount} onClick={save}>
+          <Save className="h-4 w-4" />
+          Guardar {mode === "income" ? "ingreso" : "egreso"}
+        </button>
+      </div>
+    </Card>
+  );
 }
 
 function CrisisScreen({
