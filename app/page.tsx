@@ -144,6 +144,18 @@ type AgendaItem = {
   createdAt: string;
   updatedAt: string;
 };
+type SubscriptionItem = {
+  id: string;
+  name: string;
+  amount: number;
+  billing: string;
+  type: "Casa" | "Personal Maria" | "Personal Gina" | "Compartido" | "Botica Spa" | "Walkme";
+  category: string;
+  priority: "Necesaria" | "Util" | "Pausar" | "Cancelar";
+  account: string;
+  status: "Activa" | "Pausada" | "Cancelada" | "Revisar";
+  notes: string;
+};
 
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -499,8 +511,9 @@ const debts = [
   }
 ];
 
-const subscriptions = [
+const initialSubscriptions: SubscriptionItem[] = [
   {
+    id: "sub-ai-tool",
     name: "Herramienta IA",
     amount: 600,
     billing: "2026-05-04",
@@ -508,9 +521,11 @@ const subscriptions = [
     category: "IA",
     priority: "Pausar",
     account: "Tarjeta Gina",
-    status: "Activa"
+    status: "Activa",
+    notes: ""
   },
   {
+    id: "sub-streaming",
     name: "Streaming",
     amount: 299,
     billing: "2026-05-06",
@@ -518,9 +533,11 @@ const subscriptions = [
     category: "TV / Streaming",
     priority: "Cancelar",
     account: "Tarjeta Gina",
-    status: "Activa"
+    status: "Activa",
+    notes: ""
   },
   {
+    id: "sub-walkme-domain",
     name: "Dominio Walkme",
     amount: 450,
     billing: "2026-05-14",
@@ -528,7 +545,8 @@ const subscriptions = [
     category: "Hosting / Dominio",
     priority: "Necesaria",
     account: "Cuenta Maria",
-    status: "Activa"
+    status: "Activa",
+    notes: ""
   }
 ];
 
@@ -973,6 +991,7 @@ function AppShell() {
   const [expenses, setExpenses] = useState<Expense[]>(() => readStoredList("control30-expenses", initialExpenses));
   const [budgets, setBudgets] = useState<BudgetItem[]>(() => readStoredList("control30-budgets", initialBudgets));
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>(() => readStoredList("control30-agenda", initialAgendaItems));
+  const [subscriptions, setSubscriptions] = useState<SubscriptionItem[]>(() => readStoredList("control30-subscriptions", initialSubscriptions));
   const [appSettings, setAppSettings] = useState<AppSettings>(() => readStoredValue("control30-settings", defaultSettings));
   const [syncStatus, setSyncStatus] = useState("Conectando con Supabase...");
 
@@ -996,6 +1015,10 @@ function AppShell() {
   useEffect(() => {
     writeStoredList("control30-agenda", agendaItems);
   }, [agendaItems]);
+
+  useEffect(() => {
+    writeStoredList("control30-subscriptions", subscriptions);
+  }, [subscriptions]);
 
   useEffect(() => {
     writeStoredValue("control30-settings", appSettings);
@@ -1360,6 +1383,27 @@ function AppShell() {
     }
   }
 
+  function saveSubscriptionRecord(subscription: SubscriptionItem) {
+    const next = {
+      ...subscription,
+      name: subscription.name.trim(),
+      category: subscription.category.trim() || "Otro",
+      account: subscription.account.trim() || "Sin cuenta",
+      amount: Number(subscription.amount) || 0
+    };
+    if (!next.name) return;
+    setSubscriptions((current) => {
+      const exists = current.some((item) => item.id === next.id);
+      return exists ? current.map((item) => (item.id === next.id ? next : item)) : [next, ...current];
+    });
+    setSyncStatus("Suscripcion guardada en este dispositivo.");
+  }
+
+  function deleteSubscriptionRecord(id: string) {
+    setSubscriptions((current) => current.filter((item) => item.id !== id));
+    setSyncStatus("Suscripcion borrada en este dispositivo.");
+  }
+
   function login(user: string) {
     window.localStorage.setItem("control30-user", user);
     setCurrentUser(user);
@@ -1470,15 +1514,15 @@ function AppShell() {
         {screen === "budget" && <BudgetScreen budgets={budgets} onSaveBudget={(budget) => void saveBudgetRecord(budget)} onDeleteBudget={(id) => void deleteBudgetRecord(id)} expenses={expenses} setScreen={setScreen} />}
         {screen === "accounts" && <AccountsScreen />}
         {screen === "debts" && <DebtsScreen />}
-        {screen === "subscriptions" && <SubscriptionsScreen />}
+        {screen === "subscriptions" && <SubscriptionsScreen subscriptions={subscriptions} onSave={(item) => saveSubscriptionRecord(item)} onDelete={(id) => deleteSubscriptionRecord(id)} />}
         {screen === "payments" && <PaymentsScreen />}
         {screen === "agenda" && <AgendaScreen storedItems={agendaItems} onSaveItem={(item) => void saveAgendaRecord(item)} onUpdateStatus={(id, status) => void updateAgendaStatus(id, status)} onDeleteItem={(id) => void deleteAgendaRecord(id)} />}
         {screen === "pending" && <PendingScreen items={agendaItems} onSaveItem={(item) => void saveAgendaRecord(item)} onUpdateStatus={(id, status) => void updateAgendaStatus(id, status)} onDeleteItem={(id) => void deleteAgendaRecord(id)} />}
-        {screen === "home" && <AreaDetailScreen area="Casa" expenses={expenses} incomes={incomes} budgets={budgets} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
-        {screen === "botica" && <AreaDetailScreen area="Botica Spa" expenses={expenses} incomes={incomes} budgets={budgets} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
-        {screen === "walkme" && <AreaDetailScreen area="Walkme" expenses={expenses} incomes={incomes} budgets={budgets} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
-        {screen === "gina" && <AreaDetailScreen area="Personal Gina" expenses={expenses} incomes={incomes} budgets={budgets} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
-        {screen === "maria" && <AreaDetailScreen area="Personal Maria" expenses={expenses} incomes={incomes} budgets={budgets} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
+        {screen === "home" && <AreaDetailScreen area="Casa" expenses={expenses} incomes={incomes} budgets={budgets} subscriptions={subscriptions} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
+        {screen === "botica" && <AreaDetailScreen area="Botica Spa" expenses={expenses} incomes={incomes} budgets={budgets} subscriptions={subscriptions} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
+        {screen === "walkme" && <AreaDetailScreen area="Walkme" expenses={expenses} incomes={incomes} budgets={budgets} subscriptions={subscriptions} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
+        {screen === "gina" && <AreaDetailScreen area="Personal Gina" expenses={expenses} incomes={incomes} budgets={budgets} subscriptions={subscriptions} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
+        {screen === "maria" && <AreaDetailScreen area="Personal Maria" expenses={expenses} incomes={incomes} budgets={budgets} subscriptions={subscriptions} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
         {screen === "crisis" && <CrisisScreen totals={totals} setScreen={setScreen} />}
         {screen === "planb" && <PlanBScreen totals={totals} settings={appSettings} />}
       </section>
@@ -2254,14 +2298,98 @@ function DebtsScreen() {
   );
 }
 
-function SubscriptionsScreen() {
+function SubscriptionsScreen({
+  subscriptions,
+  onSave,
+  onDelete
+}: {
+  subscriptions: SubscriptionItem[];
+  onSave: (subscription: SubscriptionItem) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [draft, setDraft] = useState<SubscriptionItem>({
+    id: newRecordId(),
+    name: "",
+    amount: 0,
+    billing: todayDate(),
+    type: "Casa",
+    category: "Otro",
+    priority: "Util",
+    account: "Tarjeta Gina",
+    status: "Activa",
+    notes: ""
+  });
+  const isEditing = subscriptions.some((item) => item.id === draft.id);
+
+  function update<K extends keyof SubscriptionItem>(key: K, value: SubscriptionItem[K]) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function resetDraft() {
+    setDraft({
+      id: newRecordId(),
+      name: "",
+      amount: 0,
+      billing: todayDate(),
+      type: "Casa",
+      category: "Otro",
+      priority: "Util",
+      account: "Tarjeta Gina",
+      status: "Activa",
+      notes: ""
+    });
+  }
+
+  function submit() {
+    if (!draft.name.trim()) return;
+    onSave(draft);
+    resetDraft();
+  }
+
   return (
     <div className="space-y-4">
-      <MockForm fields={["Nombre", "Monto mensual", "Fecha de cobro", "Tipo", "Categoria", "Prioridad", "Cuenta o tarjeta", "Estado", "Notas"]} />
+      <Card>
+        <p className="mb-3 text-lg font-bold">{isEditing ? "Editar suscripcion" : "Agregar suscripcion"}</p>
+        <div className="grid gap-3">
+          <input className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.name} onChange={(event) => update("name", event.target.value)} placeholder="Nombre. Ej. Netflix, ChatGPT, dominio Walkme" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" inputMode="decimal" value={draft.amount || ""} onChange={(event) => update("amount", Number(event.target.value))} placeholder="Monto mensual" />
+            <input className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" type="date" value={draft.billing} onChange={(event) => update("billing", event.target.value)} />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <select className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.type} onChange={(event) => update("type", event.target.value as SubscriptionItem["type"])}>
+              {["Casa", "Personal Maria", "Personal Gina", "Compartido", "Botica Spa", "Walkme"].map((type) => <option key={type}>{type}</option>)}
+            </select>
+            <select className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.category} onChange={(event) => update("category", event.target.value)}>
+              {["IA", "Software", "TV / Streaming", "Telefonia", "Hosting / Dominio", "Apps", "Herramientas de negocio", "Bancos / Comisiones", "Otro"].map((category) => <option key={category}>{category}</option>)}
+            </select>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <select className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.priority} onChange={(event) => update("priority", event.target.value as SubscriptionItem["priority"])}>
+              {["Necesaria", "Util", "Pausar", "Cancelar"].map((priority) => <option key={priority}>{priority}</option>)}
+            </select>
+            <select className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.status} onChange={(event) => update("status", event.target.value as SubscriptionItem["status"])}>
+              {["Activa", "Pausada", "Cancelada", "Revisar"].map((status) => <option key={status}>{status}</option>)}
+            </select>
+          </div>
+          <input className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.account} onChange={(event) => update("account", event.target.value)} placeholder="Cuenta o tarjeta donde se cobra" />
+          <textarea className="min-h-20 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none" value={draft.notes} onChange={(event) => update("notes", event.target.value)} placeholder="Notas" />
+          <div className="grid gap-2 sm:grid-cols-2">
+            {isEditing ? (
+              <button className="min-h-12 rounded-xl bg-slate-100 px-4 font-semibold text-slate-700" onClick={resetDraft}>
+                Cancelar edicion
+              </button>
+            ) : null}
+            <button className={`${isEditing ? "" : "sm:col-span-2"} min-h-12 rounded-xl bg-ink px-4 font-semibold text-white disabled:opacity-50`} disabled={!draft.name.trim()} onClick={submit}>
+              {isEditing ? "Guardar cambios" : "Agregar suscripcion"}
+            </button>
+          </div>
+        </div>
+      </Card>
       <SectionTitle title="Suscripciones" />
       <div className="space-y-3">
         {subscriptions.map((item) => (
-          <Card key={item.name}>
+          <Card key={item.id}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-semibold">{item.name}</p>
@@ -2271,6 +2399,15 @@ function SubscriptionsScreen() {
             </div>
             <p className="mt-3 text-2xl font-bold">{money.format(item.amount)}</p>
             <p className="text-sm text-slate-500">Se cobra el {item.billing} en {item.account}</p>
+            {item.notes ? <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{item.notes}</p> : null}
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button className="min-h-11 rounded-xl bg-slate-100 px-3 font-semibold text-slate-700" onClick={() => setDraft(item)}>
+                Editar
+              </button>
+              <button className="min-h-11 rounded-xl bg-red-50 px-3 font-semibold text-emergency" onClick={() => onDelete(item.id)}>
+                Borrar
+              </button>
+            </div>
           </Card>
         ))}
       </div>
@@ -2866,6 +3003,7 @@ function AreaDetailScreen({
   expenses,
   incomes,
   budgets,
+  subscriptions,
   onSaveExpense,
   onSaveIncome,
   setScreen
@@ -2874,6 +3012,7 @@ function AreaDetailScreen({
   expenses: Expense[];
   incomes: Income[];
   budgets: BudgetItem[];
+  subscriptions: SubscriptionItem[];
   onSaveExpense: (expense: Expense) => void;
   onSaveIncome: (income: Income) => void;
   setScreen: (screen: Screen) => void;
