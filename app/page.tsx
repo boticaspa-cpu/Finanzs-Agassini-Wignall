@@ -56,6 +56,7 @@ type Screen =
   | "planb";
 
 type Priority = "must_pay" | "important" | "negotiable" | "pause" | "eliminate";
+type ExpenseFrequency = "once" | "daily" | "weekly" | "biweekly" | "monthly" | "bimonthly" | "quarterly" | "annual";
 type ExpenseArea = "Casa" | "Personal Maria" | "Personal Gina" | "Compartido" | "Botica Spa" | "Walkme" | "Deuda" | "Suscripcion" | "Emergencia" | "Otro";
 type Expense = {
   id: string;
@@ -65,6 +66,7 @@ type Expense = {
   type: ExpenseArea;
   category: string;
   priority: Priority;
+  frequency: ExpenseFrequency;
   paidBy: string;
   due: string;
   business?: "Botica Spa" | "Walkme";
@@ -217,6 +219,7 @@ const initialExpenses: Expense[] = [
     type: "Casa",
     category: "Renta",
     priority: "must_pay",
+    frequency: "monthly",
     paidBy: "Compartido",
     due: "2026-05-03"
   },
@@ -228,6 +231,7 @@ const initialExpenses: Expense[] = [
     type: "Casa",
     category: "Comida",
     priority: "important",
+    frequency: "weekly",
     paidBy: "Maria",
     due: "2026-05-05"
   },
@@ -239,6 +243,7 @@ const initialExpenses: Expense[] = [
     type: "Botica Spa",
     category: "Publicidad",
     priority: "pause",
+    frequency: "monthly",
     paidBy: "Maria",
     due: "2026-05-08",
     business: "Botica Spa",
@@ -252,6 +257,7 @@ const initialExpenses: Expense[] = [
     type: "Walkme",
     category: "Renta local",
     priority: "must_pay",
+    frequency: "monthly",
     paidBy: "Gina",
     due: "2026-05-05",
     business: "Walkme",
@@ -265,6 +271,7 @@ const initialExpenses: Expense[] = [
     type: "Walkme",
     category: "Impuestos",
     priority: "must_pay",
+    frequency: "monthly",
     paidBy: "Gina",
     due: "2026-05-10",
     business: "Walkme",
@@ -278,6 +285,7 @@ const initialExpenses: Expense[] = [
     type: "Walkme",
     category: "Servicios",
     priority: "important",
+    frequency: "bimonthly",
     paidBy: "Gina",
     due: "2026-05-08",
     business: "Walkme",
@@ -291,6 +299,7 @@ const initialExpenses: Expense[] = [
     type: "Walkme",
     category: "Servicios",
     priority: "important",
+    frequency: "monthly",
     paidBy: "Gina",
     due: "2026-05-08",
     business: "Walkme",
@@ -304,6 +313,7 @@ const initialExpenses: Expense[] = [
     type: "Walkme",
     category: "Municipio",
     priority: "negotiable",
+    frequency: "monthly",
     paidBy: "Gina",
     due: "2026-05-12",
     business: "Walkme",
@@ -317,6 +327,7 @@ const initialExpenses: Expense[] = [
     type: "Walkme",
     category: "Proveedor",
     priority: "negotiable",
+    frequency: "monthly",
     paidBy: "Gina",
     due: "2026-05-12",
     business: "Walkme",
@@ -330,6 +341,7 @@ const initialExpenses: Expense[] = [
     type: "Walkme",
     category: "Nomina",
     priority: "must_pay",
+    frequency: "monthly",
     paidBy: "Gina",
     due: "2026-05-15",
     business: "Walkme",
@@ -343,6 +355,7 @@ const initialExpenses: Expense[] = [
     type: "Walkme",
     category: "Proveedor",
     priority: "negotiable",
+    frequency: "monthly",
     paidBy: "Gina",
     due: "2026-05-15",
     business: "Walkme",
@@ -356,6 +369,7 @@ const initialExpenses: Expense[] = [
     type: "Compartido",
     category: "Apps",
     priority: "eliminate",
+    frequency: "monthly",
     paidBy: "Tarjeta Gina",
     due: "2026-05-10"
   }
@@ -657,6 +671,22 @@ function priorityLabel(priority: Priority) {
   return labels[priority];
 }
 
+function frequencyLabel(frequency: ExpenseFrequency) {
+  const labels: Record<ExpenseFrequency, string> = {
+    once: "Una sola vez",
+    daily: "Diario",
+    weekly: "Semanal",
+    biweekly: "Quincenal",
+    monthly: "Mensual",
+    bimonthly: "Bimestral",
+    quarterly: "Trimestral",
+    annual: "Anual"
+  };
+  return labels[frequency];
+}
+
+const expenseFrequencies: ExpenseFrequency[] = ["once", "daily", "weekly", "biweekly", "monthly", "bimonthly", "quarterly", "annual"];
+
 function todayDate() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -737,6 +767,7 @@ function expenseFromRow(row: Record<string, unknown>): Expense {
     type,
     category: String(row.category ?? "Sin categoria"),
     priority: String(row.priority ?? "important") as Priority,
+    frequency: String(row.frequency ?? (row.is_recurring ? "monthly" : "once")) as ExpenseFrequency,
     paidBy: String(row.paid_by_label ?? "Compartido"),
     due: String(row.due_date ?? row.date ?? "2026-05-01"),
     business: type === "Botica Spa" || type === "Walkme" ? type : undefined,
@@ -971,8 +1002,10 @@ function AppShell() {
       type: expense.type,
       category: expense.category,
       priority: expense.priority,
+      frequency: expense.frequency,
       paid_by_label: expense.paidBy,
       due_date: expense.due,
+      is_recurring: expense.frequency !== "once",
       is_business_expense_paid_personally: Boolean(expense.paidPersonally),
       attachment_path: attachmentUrl ?? null,
       notes: expense.notes ?? "",
@@ -2589,6 +2622,7 @@ function QuickMoneyCapture({
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
   const [date, setDate] = useState(todayDate());
+  const [frequency, setFrequency] = useState<ExpenseFrequency>("once");
   const [notes, setNotes] = useState("");
   const [file, setFile] = useState<File | undefined>();
   const areaLabel = area === "Personal Gina" ? "Gina" : area === "Personal Maria" ? "Maria" : area;
@@ -2597,6 +2631,7 @@ function QuickMoneyCapture({
     setTitle("");
     setAmount("");
     setCategory("");
+    setFrequency("once");
     setNotes("");
     setFile(undefined);
   }
@@ -2633,6 +2668,7 @@ function QuickMoneyCapture({
         type: area,
         category: category.trim() || "Sin categoria",
         priority: "important",
+        frequency,
         paidBy: area === "Personal Gina" ? "Gina" : area === "Personal Maria" ? "Maria" : "Compartido",
         due: date,
         business: area === "Botica Spa" || area === "Walkme" ? area : undefined,
@@ -2700,6 +2736,22 @@ function QuickMoneyCapture({
             onChange={(event) => setFile(event.target.files?.[0])}
           />
         </div>
+        {mode === "expense" ? (
+          <label className="grid gap-1">
+            <span className="text-sm font-medium text-slate-600">Frecuencia del gasto</span>
+            <select
+              className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+              value={frequency}
+              onChange={(event) => setFrequency(event.target.value as ExpenseFrequency)}
+            >
+              {expenseFrequencies.map((item) => (
+                <option key={item} value={item}>
+                  {frequencyLabel(item)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <textarea
           className="min-h-20 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none focus:border-slate-400"
           value={notes}
@@ -3145,6 +3197,7 @@ function ExpenseEditor({
       type: defaultType,
       category: "",
       priority: "important",
+      frequency: "once",
       paidBy: "Compartido",
       due: "2026-05-01",
       paidPersonally: false,
@@ -3183,6 +3236,7 @@ function ExpenseEditor({
         type: defaultType,
         category: "",
         priority: "important",
+        frequency: "once",
         paidBy: "Compartido",
         due: "2026-05-01",
         paidPersonally: false,
@@ -3293,6 +3347,20 @@ function ExpenseEditor({
             />
           </label>
         </div>
+        <label className="grid gap-1">
+          <span className="text-sm font-medium text-slate-600">Frecuencia</span>
+          <select
+            className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
+            value={draft.frequency}
+            onChange={(event) => update("frequency", event.target.value as ExpenseFrequency)}
+          >
+            {expenseFrequencies.map((item) => (
+              <option key={item} value={item}>
+                {frequencyLabel(item)}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="flex min-h-12 items-center gap-3 rounded-xl bg-slate-50 px-3 text-sm font-medium text-slate-700">
           <input
             type="checkbox"
@@ -3356,7 +3424,9 @@ function ExpenseItemCard({ expense, onEdit, onDelete }: { expense: Expense; onEd
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3">
         <SmallInfo icon={UserRound} label="Pago" value={expense.paidBy} />
-        <SmallInfo icon={CalendarClock} label="Vence" value={expense.due} />
+        <SmallInfo icon={CalendarClock} label="Fecha" value={expense.due} />
+        <SmallInfo icon={Clock3} label="Frecuencia" value={frequencyLabel(expense.frequency)} />
+        <SmallInfo icon={ReceiptText} label="Area" value={expense.type} />
       </div>
       {expense.paidPersonally ? (
         <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-medium text-alert">Sale de dinero personal para negocio.</p>

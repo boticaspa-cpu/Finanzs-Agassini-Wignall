@@ -75,12 +75,16 @@ create table if not exists expenses (
   business_id uuid references businesses(id),
   due_date date,
   is_recurring boolean not null default false,
+  frequency text not null default 'once',
   is_business_expense_paid_personally boolean not null default false,
   attachment_path text,
   notes text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table expenses
+add column if not exists frequency text not null default 'once';
 
 create table if not exists budget_items (
   id uuid primary key default gen_random_uuid(),
