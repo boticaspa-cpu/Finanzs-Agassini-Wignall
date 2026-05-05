@@ -1484,12 +1484,12 @@ function AppShell() {
       </section>
 
       {quickOpen && (
-        <div className="fixed inset-0 z-30 bg-ink/30 px-5 pb-28 pt-20 lg:flex lg:items-start lg:justify-center" onClick={() => setQuickOpen(false)}>
-          <div className="w-full max-w-sm rounded-2xl bg-white p-3 shadow-soft" onClick={(event) => event.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-end bg-ink/30 px-4 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] pt-16 lg:items-start lg:justify-center lg:pb-8" onClick={() => setQuickOpen(false)}>
+          <div className="max-h-[72vh] w-full max-w-sm overflow-y-auto rounded-3xl bg-white p-4 shadow-soft lg:max-h-[80vh]" onClick={(event) => event.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between px-2">
-              <p className="font-semibold">Agregar rapido</p>
+              <p className="text-lg font-bold">Agregar rapido</p>
               <button
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100"
+                className="app-touch flex h-11 w-11 items-center justify-center rounded-full bg-slate-100"
                 onClick={() => setQuickOpen(false)}
                 aria-label="Cerrar acciones"
               >
@@ -1500,7 +1500,7 @@ function AppShell() {
               {quickActions.map((action) => (
                 <button
                   key={action.label}
-                  className="flex min-h-14 items-center gap-3 rounded-xl border border-slate-100 bg-white px-3 text-left active:bg-slate-50"
+                  className="flex min-h-14 items-center gap-3 rounded-2xl border border-slate-100 bg-white px-3 text-left active:bg-slate-50"
                   onClick={() => {
                     setScreen(action.id);
                     setQuickOpen(false);
@@ -1517,13 +1517,15 @@ function AppShell() {
         </div>
       )}
 
-      <button
-        className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] left-1/2 z-40 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full bg-ink text-white shadow-soft lg:hidden"
-        onClick={() => setQuickOpen(true)}
-        aria-label="Agregar"
-      >
-        <Plus className="h-7 w-7" />
-      </button>
+      {!quickOpen ? (
+        <button
+          className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] left-1/2 z-40 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full bg-ink text-white shadow-soft lg:hidden"
+          onClick={() => setQuickOpen(true)}
+          aria-label="Agregar"
+        >
+          <Plus className="h-7 w-7" />
+        </button>
+      ) : null}
 
       <nav className="app-bottom-safe fixed inset-x-0 bottom-0 z-30 grid w-full grid-cols-5 border-t border-slate-200 bg-white px-2 pt-2 lg:hidden">
         {navItems.map((item) => (
@@ -2916,7 +2918,7 @@ function AreaDetailScreen({
 
       <QuickMoneyCapture area={area} onSaveExpense={onSaveExpense} onSaveIncome={onSaveIncome} />
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <button className="min-h-12 rounded-2xl bg-white px-4 font-semibold text-slate-700 shadow-sm" onClick={() => setScreen("expenses")}>
           Captura detallada de gasto
         </button>
@@ -3077,16 +3079,16 @@ function QuickMoneyCapture({
 
   return (
     <Card>
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div className="grid gap-3 sm:flex sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <p className="font-bold">Captura rapida</p>
           <p className="mt-1 text-sm text-slate-500">Agrega ingresos o egresos de {areaLabel} sin llenar todo el formulario.</p>
         </div>
-        <div className="grid grid-cols-2 rounded-2xl bg-slate-100 p-1 text-sm font-bold">
-          <button className={`rounded-xl px-3 py-2 ${mode === "expense" ? "bg-white text-ink shadow-sm" : "text-slate-500"}`} onClick={() => setMode("expense")}>
+        <div className="grid w-full grid-cols-2 rounded-2xl bg-slate-100 p-1 text-sm font-bold sm:w-auto">
+          <button className={`min-h-11 rounded-xl px-3 ${mode === "expense" ? "bg-white text-ink shadow-sm" : "text-slate-500"}`} onClick={() => setMode("expense")}>
             Egreso
           </button>
-          <button className={`rounded-xl px-3 py-2 ${mode === "income" ? "bg-white text-ink shadow-sm" : "text-slate-500"}`} onClick={() => setMode("income")}>
+          <button className={`min-h-11 rounded-xl px-3 ${mode === "income" ? "bg-white text-ink shadow-sm" : "text-slate-500"}`} onClick={() => setMode("income")}>
             Ingreso
           </button>
         </div>
@@ -3116,7 +3118,7 @@ function QuickMoneyCapture({
           onChange={(event) => setTitle(event.target.value)}
           placeholder={mode === "income" ? "Ej. venta, deposito, apoyo" : "Ej. super, luz, sabanas, publicidad"}
         />
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <input
             className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
             inputMode="decimal"
@@ -3131,7 +3133,7 @@ function QuickMoneyCapture({
             placeholder={mode === "income" ? "Categoria opcional" : "Categoria"}
           />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <input
             className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
             type="date"
