@@ -3,13 +3,14 @@ import PwaRegister from "./pwa-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Control 30",
-  description: "Dashboard de finanzas familiares para Maria y Gina",
+  applicationName: "Familia Agassl",
+  title: "Familia Agassl",
+  description: "Control simple de ingresos, gastos, presupuesto y pendientes familiares.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "Control 30",
-    statusBarStyle: "default"
+    title: "Familia Agassl",
+    statusBarStyle: "black-translucent"
   },
   icons: {
     icon: "/icons/control-30-icon.svg",

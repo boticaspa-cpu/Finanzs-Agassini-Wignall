@@ -1354,7 +1354,14 @@ function AppShell() {
               Salir
             </button>
             <button
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm lg:hidden"
+              className="app-touch flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm lg:hidden"
+              onClick={() => setScreen("dashboard")}
+              aria-label="Abrir Dashboard"
+            >
+              <LayoutDashboard className="h-5 w-5" />
+            </button>
+            <button
+              className="app-touch flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm lg:hidden"
               onClick={() => setScreen("planb")}
               aria-label="Abrir Plan B"
             >
@@ -1419,14 +1426,14 @@ function AppShell() {
       )}
 
       <button
-        className="fixed bottom-20 left-1/2 z-40 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full bg-ink text-white shadow-soft lg:hidden"
+        className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] left-1/2 z-40 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full bg-ink text-white shadow-soft lg:hidden"
         onClick={() => setQuickOpen(true)}
         aria-label="Agregar"
       >
         <Plus className="h-7 w-7" />
       </button>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid w-full grid-cols-5 border-t border-slate-200 bg-white px-2 pb-3 pt-2 lg:hidden">
+      <nav className="app-bottom-safe fixed inset-x-0 bottom-0 z-30 grid w-full grid-cols-5 border-t border-slate-200 bg-white px-2 pt-2 lg:hidden">
         {navItems.map((item) => (
           <button
             key={item.id}
@@ -3822,12 +3829,12 @@ function EmptyState({ text }: { text: string }) {
 
 function StatusHero({ title, message, value, subvalue }: { title: string; message: string; value: string; subvalue: string }) {
   return (
-    <section className="rounded-3xl bg-ink p-5 text-white shadow-soft">
+    <section className="max-w-full rounded-3xl bg-ink p-5 text-white shadow-soft">
       <div className="mb-5 flex items-center gap-2">
         <AlertTriangle className="h-5 w-5 text-amber-100" />
         <p className="font-semibold">{title}</p>
       </div>
-      <p className="text-4xl font-bold tracking-normal">{value}</p>
+      <p className="break-words text-4xl font-bold tracking-normal">{value}</p>
       <p className="mt-2 font-medium text-green-50">{subvalue}</p>
       <p className="mt-4 text-sm leading-6 text-green-50">{message}</p>
     </section>
@@ -3835,14 +3842,14 @@ function StatusHero({ title, message, value, subvalue }: { title: string; messag
 }
 
 function Card({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-2xl border border-green-900/10 bg-white p-4 shadow-sm">{children}</div>;
+  return <div className="app-surface max-w-full rounded-2xl p-4">{children}</div>;
 }
 
 function MetricCard({ label, value, tone = "default", compact = false }: { label: string; value: string; tone?: "default" | "red"; compact?: boolean }) {
   return (
-    <div className={`rounded-2xl border border-green-900/10 bg-white ${compact ? "p-3" : "p-4"} shadow-sm`}>
+    <div className={`app-surface max-w-full rounded-2xl ${compact ? "p-3" : "p-4"}`}>
       <p className="text-sm font-medium text-slate-500">{label}</p>
-      <p className={`mt-2 font-bold tracking-normal ${compact ? "text-xl" : "text-2xl"} ${tone === "red" ? "text-emergency" : "text-ink"}`}>{value}</p>
+      <p className={`mt-2 break-words font-bold tracking-normal ${compact ? "text-xl" : "text-2xl"} ${tone === "red" ? "text-emergency" : "text-ink"}`}>{value}</p>
     </div>
   );
 }

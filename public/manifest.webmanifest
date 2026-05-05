@@ -1,11 +1,11 @@
 {
-  "name": "Control 30",
-  "short_name": "Control 30",
-  "description": "Control de finanzas familiares para Maria y Gina.",
-  "start_url": "/",
+  "name": "Familia Agassl",
+  "short_name": "Agassl",
+  "description": "Control simple de ingresos, gastos, presupuesto y pendientes familiares.",
+  "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#eef3ed",
   "theme_color": "#173828",
   "icons": [

@@ -1,4 +1,4 @@
-const CACHE_NAME = "control-30-v3";
+const CACHE_NAME = "familia-agassl-v6";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/icons/control-30-icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -24,6 +24,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.origin !== self.location.origin) {
+    return;
+  }
+
   if (event.request.mode === "navigate") {
     event.respondWith(
       fetch(event.request)
@@ -41,13 +46,16 @@ self.addEventListener("fetch", (event) => {
 
   event.respondWith(
     fetch(event.request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, copy);
-          });
+      .then((response) => {
+        if (!response.ok) {
           return response;
-        })
+        }
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, copy);
+        });
+        return response;
+      })
       .catch(() => caches.match(event.request))
   );
 });
