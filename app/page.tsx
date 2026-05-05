@@ -785,6 +785,98 @@ function receiptKind(file: File) {
   return "image" as const;
 }
 
+function cleanReceiptText(value: string) {
+  return value
+    .replace(/\.[a-z0-9]{2,5}$/i, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractAmount(value: string) {
+  const normalized = value.replace(/,/g, "");
+  const moneyMatches = Array.from(normalized.matchAll(/\$?\s*(\d+(?:\.\d{1,2})?)/g));
+  const amounts = moneyMatches.map((match) => Number(match[1])).filter((amount) => Number.isFinite(amount) && amount > 0);
+  return amounts.length > 0 ? amounts[amounts.length - 1] : undefined;
+}
+
+function titleCase(value: string) {
+  return value
+    .trim()
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function inferExpenseFromText(text: string, fallbackArea: ExpenseArea) {
+  const cleaned = cleanReceiptText(text);
+  const normalized = cleaned.toLowerCase();
+  const amount = extractAmount(cleaned);
+  let type: ExpenseArea = fallbackArea;
+  let category = "Sin categoria";
+  let name = cleaned.replace(/\$?\s*\d+(?:[.,]\d{1,2})?/g, "").trim();
+  let frequency: ExpenseFrequency = "once";
+  let priority: Priority = "important";
+
+  if (/\b(casa|hogar|super|supermercado|soriana|sorianita|chedraui|walmart|costco|comida|despensa)\b/.test(normalized)) {
+    type = "Casa";
+  }
+  if (/\b(botica|spa|sabanas|terapeuta|insumos|cabina|masaje)\b/.test(normalized)) {
+    type = "Botica Spa";
+  }
+  if (/\b(walkme|wokmi|local|renta local|municipio|trino|telmex walkme|impresiones)\b/.test(normalized)) {
+    type = "Walkme";
+  }
+  if (/\b(gina)\b/.test(normalized)) {
+    type = "Personal Gina";
+  }
+  if (/\b(maria|maría)\b/.test(normalized)) {
+    type = "Personal Maria";
+  }
+
+  if (/\b(super|supermercado|soriana|sorianita|chedraui|walmart|costco|comida|despensa|abarrotes)\b/.test(normalized)) {
+    category = "Supermercado";
+  } else if (/\b(luz|cfe|agua|telmex|internet|celular|telefono|teléfono)\b/.test(normalized)) {
+    category = "Servicios";
+  } else if (/\b(renta|alquiler)\b/.test(normalized)) {
+    category = "Renta";
+    priority = "must_pay";
+  } else if (/\b(publicidad|marketing|campana|campaña|meta ads|google ads)\b/.test(normalized)) {
+    category = "Publicidad";
+  } else if (/\b(impuesto|impuestos|sat|municipio|imss|nomina|nómina)\b/.test(normalized)) {
+    category = "Impuestos / Nomina";
+    priority = "must_pay";
+  } else if (/\b(suscripcion|suscripción|software|hosting|dominio|chatgpt|ia)\b/.test(normalized)) {
+    category = "Software / Suscripcion";
+  } else if (/\b(gasolina|transporte|uber|taxi)\b/.test(normalized)) {
+    category = "Transporte";
+  }
+
+  if (/\b(diario|diaria|al dia|al día)\b/.test(normalized)) frequency = "daily";
+  if (/\b(semanal|semana)\b/.test(normalized)) frequency = "weekly";
+  if (/\b(quincenal|quincena)\b/.test(normalized)) frequency = "biweekly";
+  if (/\b(mensual|mes)\b/.test(normalized)) frequency = "monthly";
+  if (/\b(bimestral|bimestre)\b/.test(normalized)) frequency = "bimonthly";
+  if (/\b(anual|año|ano)\b/.test(normalized)) frequency = "annual";
+
+  const knownStore = normalized.match(/\b(soriana|sorianita|chedraui|walmart|costco|telmex|cfe|imss|trino)\b/);
+  if (knownStore) {
+    name = titleCase(knownStore[1]);
+  }
+  if (!name) {
+    name = category === "Supermercado" ? "Supermercado" : cleaned || "Gasto";
+  }
+
+  return {
+    amount,
+    name: titleCase(name),
+    type,
+    category,
+    priority,
+    frequency
+  };
+}
+
 async function uploadReceipt(file: File | undefined, folder: "incomes" | "expenses") {
   if (!file) return undefined;
   if (!supabase) return undefined;
@@ -2901,6 +2993,7 @@ function QuickMoneyCapture({
   const [frequency, setFrequency] = useState<ExpenseFrequency>("once");
   const [notes, setNotes] = useState("");
   const [file, setFile] = useState<File | undefined>();
+  const [mapText, setMapText] = useState("");
   const areaLabel = area === "Personal Gina" ? "Gina" : area === "Personal Maria" ? "Maria" : area;
 
   function reset() {
@@ -2910,6 +3003,29 @@ function QuickMoneyCapture({
     setFrequency("once");
     setNotes("");
     setFile(undefined);
+    setMapText("");
+  }
+
+  function applyMapping(text: string) {
+    const suggestion = inferExpenseFromText(text, area);
+    if (suggestion.name) setTitle(suggestion.name);
+    if (suggestion.amount) setAmount(String(suggestion.amount));
+    if (suggestion.category) setCategory(suggestion.category);
+    if (suggestion.frequency) setFrequency(suggestion.frequency);
+    if (suggestion.type !== area) {
+      setNotes((current) => {
+        const line = `Mapeo sugerido: ${suggestion.type}`;
+        return current.includes(line) ? current : current ? `${current}\n${line}` : line;
+      });
+    }
+  }
+
+  function attachQuickFile(nextFile: File | undefined) {
+    setFile(nextFile);
+    if (!nextFile || mode !== "expense") return;
+    const text = cleanReceiptText(nextFile.name);
+    setMapText(text);
+    applyMapping(text);
   }
 
   function save() {
@@ -2977,6 +3093,23 @@ function QuickMoneyCapture({
       </div>
 
       <div className="mt-4 grid gap-3">
+        {mode === "expense" ? (
+          <div className="rounded-2xl bg-green-50 p-3">
+            <p className="text-sm font-bold text-ink">Mapeo rapido del ticket</p>
+            <p className="mt-1 text-xs leading-5 text-slate-600">Ej. sorianita super 850 casa. La foto/PDF se guarda como comprobante al guardar.</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+              <input
+                className="min-h-12 rounded-xl border border-green-900/10 bg-white px-3 outline-none focus:border-slate-400"
+                value={mapText}
+                onChange={(event) => setMapText(event.target.value)}
+                placeholder="Describe el ticket o gasto"
+              />
+              <button className="min-h-12 rounded-xl bg-olive px-4 font-semibold text-white" onClick={() => applyMapping(mapText)}>
+                Mapear
+              </button>
+            </div>
+          </div>
+        ) : null}
         <input
           className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none focus:border-slate-400"
           value={title}
@@ -3009,7 +3142,7 @@ function QuickMoneyCapture({
             className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm"
             type="file"
             accept="image/*,application/pdf"
-            onChange={(event) => setFile(event.target.files?.[0])}
+            onChange={(event) => attachQuickFile(event.target.files?.[0])}
           />
         </div>
         {mode === "expense" ? (
@@ -3481,6 +3614,7 @@ function ExpenseEditor({
       business: defaultType === "Botica Spa" || defaultType === "Walkme" ? defaultType : undefined
     }
   );
+  const [mapText, setMapText] = useState("");
 
   function update<K extends keyof Expense>(key: K, value: Expense[K]) {
     setDraft((current) => {
@@ -3528,16 +3662,53 @@ function ExpenseEditor({
     }
     const isPdf = file.type === "application/pdf";
     const isImage = file.type.startsWith("image/");
+    const mappedText = cleanReceiptText(file.name);
     update("attachmentName", file.name);
     update("attachmentType", isPdf ? "pdf" : "image");
     update("attachmentUrl", isImage ? URL.createObjectURL(file) : undefined);
     update("attachmentFile", file);
+    setMapText(mappedText);
+    applyMapping(mappedText);
+  }
+
+  function applyMapping(text: string) {
+    const suggestion = inferExpenseFromText(text, draft.type);
+    setDraft((current) => {
+      const nextType = suggestion.type;
+      const business = nextType === "Botica Spa" || nextType === "Walkme" ? nextType : undefined;
+      return {
+        ...current,
+        name: suggestion.name || current.name,
+        amount: suggestion.amount ?? current.amount,
+        type: nextType,
+        business,
+        category: suggestion.category || current.category,
+        priority: suggestion.priority,
+        frequency: suggestion.frequency,
+        paidPersonally: business ? current.paidPersonally : false
+      };
+    });
   }
 
   return (
     <Card>
       <p className="mb-3 font-semibold">{expense ? "Editar gasto" : "Agregar gasto"}</p>
       <div className="grid gap-3">
+        <div className="rounded-2xl bg-green-50 p-3">
+          <p className="text-sm font-bold text-ink">Mapear desde ticket o descripcion</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">Ej. sorianita super 850 casa. Si subes una foto/PDF, se guarda como comprobante y usamos el nombre del archivo como pista.</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+            <input
+              className="min-h-12 rounded-xl border border-green-900/10 bg-white px-3 outline-none focus:border-slate-400"
+              value={mapText}
+              onChange={(event) => setMapText(event.target.value)}
+              placeholder="Describe el ticket o gasto"
+            />
+            <button className="min-h-12 rounded-xl bg-olive px-4 font-semibold text-white" onClick={() => applyMapping(mapText)}>
+              Mapear
+            </button>
+          </div>
+        </div>
         <label className="grid gap-1">
           <span className="text-sm font-medium text-slate-600">Nombre del gasto</span>
           <input
