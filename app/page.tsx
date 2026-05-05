@@ -50,6 +50,8 @@ type Screen =
   | "home"
   | "botica"
   | "walkme"
+  | "gina"
+  | "maria"
   | "crisis"
   | "planb";
 
@@ -101,7 +103,7 @@ type IncomeFilter = "Todos" | IncomeArea;
 type BudgetKind = "fixed" | "variable";
 type BudgetItem = {
   id: string;
-  area: "Casa" | "Botica Spa" | "Walkme" | "Compartido";
+  area: "Casa" | "Botica Spa" | "Walkme" | "Personal Gina" | "Personal Maria" | "Compartido";
   category: string;
   name: string;
   kind: BudgetKind;
@@ -621,11 +623,11 @@ const followUps = [
 ];
 
 const navItems = [
-  { id: "dashboard" as Screen, label: "Inicio", icon: LayoutDashboard },
-  { id: "pending" as Screen, label: "Pend.", icon: ClipboardList },
   { id: "home" as Screen, label: "Casa", icon: Home },
+  { id: "walkme" as Screen, label: "Walkme", icon: Store },
   { id: "botica" as Screen, label: "Botica", icon: Sparkles },
-  { id: "walkme" as Screen, label: "Walkme", icon: Store }
+  { id: "gina" as Screen, label: "Gina", icon: UserRound },
+  { id: "maria" as Screen, label: "Maria", icon: UserRound }
 ];
 
 const quickActions = [
@@ -859,6 +861,12 @@ function AppShell() {
     const homeExpenses = expenses
       .filter((item) => item.type === "Casa")
       .reduce((sum, item) => sum + item.amount, 0);
+    const ginaExpenses = expenses
+      .filter((item) => item.type === "Personal Gina")
+      .reduce((sum, item) => sum + item.amount, 0);
+    const mariaExpenses = expenses
+      .filter((item) => item.type === "Personal Maria")
+      .reduce((sum, item) => sum + item.amount, 0);
     const boticaIncome = incomes
       .filter((item) => item.business === "Botica Spa")
       .reduce((sum, item) => sum + item.amount, 0);
@@ -876,6 +884,8 @@ function AppShell() {
       boticaExpenses,
       walkmeExpenses,
       homeExpenses,
+      ginaExpenses,
+      mariaExpenses,
       boticaIncome,
       walkmeIncome,
       weeklySalesGoal: Math.ceil(shortfall / 4),
@@ -1156,6 +1166,8 @@ function AppShell() {
         {screen === "home" && <AreaDetailScreen area="Casa" expenses={expenses} incomes={incomes} budgets={budgets} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
         {screen === "botica" && <AreaDetailScreen area="Botica Spa" expenses={expenses} incomes={incomes} budgets={budgets} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
         {screen === "walkme" && <AreaDetailScreen area="Walkme" expenses={expenses} incomes={incomes} budgets={budgets} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
+        {screen === "gina" && <AreaDetailScreen area="Personal Gina" expenses={expenses} incomes={incomes} budgets={budgets} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
+        {screen === "maria" && <AreaDetailScreen area="Personal Maria" expenses={expenses} incomes={incomes} budgets={budgets} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onSaveIncome={(income) => void saveIncomeRecord(income)} setScreen={setScreen} />}
         {screen === "crisis" && <CrisisScreen totals={totals} setScreen={setScreen} />}
         {screen === "planb" && <PlanBScreen totals={totals} settings={appSettings} />}
       </section>
@@ -1348,10 +1360,12 @@ function Dashboard({
       </div>
 
       <SectionTitle title="Separado por area" />
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid gap-3 lg:grid-cols-5">
         <AreaButton label="Casa" value={money.format(totals.homeExpenses)} icon={Home} onClick={() => setScreen("home")} />
-        <AreaButton label="Botica Spa" value={money.format(totals.boticaExpenses)} icon={Sparkles} onClick={() => setScreen("botica")} />
         <AreaButton label="Walkme" value={money.format(totals.walkmeExpenses)} icon={Store} onClick={() => setScreen("walkme")} />
+        <AreaButton label="Botica Spa" value={money.format(totals.boticaExpenses)} icon={Sparkles} onClick={() => setScreen("botica")} />
+        <AreaButton label="Gina" value={money.format(totals.ginaExpenses)} icon={UserRound} onClick={() => setScreen("gina")} />
+        <AreaButton label="Maria" value={money.format(totals.mariaExpenses)} icon={UserRound} onClick={() => setScreen("maria")} />
       </div>
 
       <SectionTitle title="Presupuesto" action="Ver presupuesto" onClick={() => setScreen("budget")} />
@@ -1583,10 +1597,10 @@ function BudgetScreen({
       </div>
 
       <AreaFilterTabs
-        areas={["Todos", "Casa", "Botica Spa", "Walkme", "Compartido"]}
+        areas={["Todos", "Casa", "Walkme", "Botica Spa", "Personal Gina", "Personal Maria", "Compartido"]}
         selected={selectedArea}
         totals={Object.fromEntries(
-          ["Casa", "Botica Spa", "Walkme", "Compartido"].map((area) => [
+          ["Casa", "Walkme", "Botica Spa", "Personal Gina", "Personal Maria", "Compartido"].map((area) => [
             area,
             budgets.filter((item) => item.area === area).reduce((sum, item) => sum + item.plannedAmount, 0)
           ])
@@ -1707,7 +1721,7 @@ function BudgetEditor({
           <label className="grid gap-1">
             <span className="text-sm font-semibold text-slate-600">Area</span>
             <select className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.area} onChange={(event) => update("area", event.target.value as BudgetItem["area"])}>
-              {["Casa", "Botica Spa", "Walkme", "Compartido"].map((area) => (
+              {["Casa", "Walkme", "Botica Spa", "Personal Gina", "Personal Maria", "Compartido"].map((area) => (
                 <option key={area} value={area}>{area}</option>
               ))}
             </select>
@@ -2444,7 +2458,7 @@ function AreaDetailScreen({
   onSaveIncome,
   setScreen
 }: {
-  area: "Casa" | "Botica Spa" | "Walkme";
+  area: "Casa" | "Botica Spa" | "Walkme" | "Personal Gina" | "Personal Maria";
   expenses: Expense[];
   incomes: Income[];
   budgets: BudgetItem[];
@@ -2461,15 +2475,17 @@ function AreaDetailScreen({
   const personal = areaExpenses.filter((item) => item.paidPersonally).reduce((sum, item) => sum + item.amount, 0);
   const areaSubscriptions = subscriptions.filter((item) => item.type === area);
   const topCategory = topExpenseCategory(areaExpenses);
-  const dailyGoal = area === "Casa" ? Math.ceil(budgetTotal / 30) : Math.ceil(Math.max(total, budgetTotal) / 30);
-  const areaLabel = area;
+  const isBusinessArea = area === "Botica Spa" || area === "Walkme";
+  const isPersonalArea = area === "Personal Gina" || area === "Personal Maria";
+  const dailyGoal = isBusinessArea ? Math.ceil(Math.max(total, budgetTotal) / 30) : Math.ceil(budgetTotal / 30);
+  const areaLabel = area === "Personal Gina" ? "Gina" : area === "Personal Maria" ? "Maria" : area;
   return (
     <div className="space-y-4">
       <StatusHero
         title={`${areaLabel} - resumen`}
         message={`${areaLabel} tiene ${areaExpenses.length} gastos registrados y ${areaBudgets.length} partidas de presupuesto desde el 1 de mayo.`}
         value={money.format(incomeTotal - total)}
-        subvalue={area === "Casa" ? `Presupuesto estimado: ${money.format(budgetTotal)}` : `Dinero personal usado: ${money.format(personal)}`}
+        subvalue={isBusinessArea ? `Dinero personal usado: ${money.format(personal)}` : `Presupuesto estimado: ${money.format(budgetTotal)}`}
       />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard label="Ingresos" value={money.format(incomeTotal)} />
@@ -2478,12 +2494,14 @@ function AreaDetailScreen({
         <MetricCard label="Meta diaria" value={money.format(dailyGoal)} />
       </div>
 
-      <CalmNotice text={area === "Casa" ? `Para sostener casa, el presupuesto diario estimado es ${money.format(dailyGoal)}.` : `Para cubrir ${areaLabel}, la meta diaria minima es ${money.format(dailyGoal)} con los gastos/presupuesto registrados.`} />
+      <CalmNotice text={isBusinessArea ? `Para cubrir ${areaLabel}, la meta diaria minima es ${money.format(dailyGoal)} con los gastos/presupuesto registrados.` : `Para ${areaLabel}, el presupuesto diario estimado es ${money.format(dailyGoal)}.`} />
 
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid gap-3 lg:grid-cols-5">
         <AreaButton label="Casa" value={money.format(expenses.filter((item) => item.type === "Casa").reduce((sum, item) => sum + item.amount, 0))} icon={Home} onClick={() => setScreen("home")} />
-        <AreaButton label="Botica Spa" value={money.format(expenses.filter((item) => item.type === "Botica Spa").reduce((sum, item) => sum + item.amount, 0))} icon={Sparkles} onClick={() => setScreen("botica")} />
         <AreaButton label="Walkme" value={money.format(expenses.filter((item) => item.type === "Walkme").reduce((sum, item) => sum + item.amount, 0))} icon={Store} onClick={() => setScreen("walkme")} />
+        <AreaButton label="Botica Spa" value={money.format(expenses.filter((item) => item.type === "Botica Spa").reduce((sum, item) => sum + item.amount, 0))} icon={Sparkles} onClick={() => setScreen("botica")} />
+        <AreaButton label="Gina" value={money.format(expenses.filter((item) => item.type === "Personal Gina").reduce((sum, item) => sum + item.amount, 0))} icon={UserRound} onClick={() => setScreen("gina")} />
+        <AreaButton label="Maria" value={money.format(expenses.filter((item) => item.type === "Personal Maria").reduce((sum, item) => sum + item.amount, 0))} icon={UserRound} onClick={() => setScreen("maria")} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -3572,6 +3590,8 @@ function titleFor(screen: Screen) {
     home: "Casa",
     botica: "Botica Spa",
     walkme: "Walkme",
+    gina: "Gina",
+    maria: "Maria",
     crisis: "Prioridades",
     planb: "Plan familiar"
   };
@@ -3589,6 +3609,8 @@ function useTotalsShape() {
     boticaExpenses: 0,
     walkmeExpenses: 0,
     homeExpenses: 0,
+    ginaExpenses: 0,
+    mariaExpenses: 0,
     boticaIncome: 0,
     walkmeIncome: 0,
     weeklySalesGoal: 0,
