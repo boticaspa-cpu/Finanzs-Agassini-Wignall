@@ -743,9 +743,31 @@ function readStoredList<T>(key: string, fallback: T[]) {
   }
 }
 
+function readStoredValue<T>(key: string, fallback: T) {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const stored = window.localStorage.getItem(key);
+    return stored ? (JSON.parse(stored) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function writeStoredList<T>(key: string, value: T[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function writeStoredValue<T>(key: string, value: T) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function mergeById<T extends { id: string }>(localItems: T[], remoteItems: T[]) {
+  const map = new Map<string, T>();
+  localItems.forEach((item) => map.set(item.id, item));
+  remoteItems.forEach((item) => map.set(item.id, item));
+  return Array.from(map.values());
 }
 
 const accountOptions = initialAccounts.map((account) => ({ name: account.name }));
@@ -854,11 +876,11 @@ function AppShell() {
   const [authReady, setAuthReady] = useState(false);
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [quickOpen, setQuickOpen] = useState(false);
-  const [incomes, setIncomes] = useState<Income[]>(initialIncomes);
-  const [expenses, setExpenses] = useState<Expense[]>(initialExpenses);
+  const [incomes, setIncomes] = useState<Income[]>(() => readStoredList("control30-incomes", initialIncomes));
+  const [expenses, setExpenses] = useState<Expense[]>(() => readStoredList("control30-expenses", initialExpenses));
   const [budgets, setBudgets] = useState<BudgetItem[]>(() => readStoredList("control30-budgets", initialBudgets));
-  const [agendaItems, setAgendaItems] = useState<AgendaItem[]>(initialAgendaItems);
-  const [appSettings, setAppSettings] = useState<AppSettings>(defaultSettings);
+  const [agendaItems, setAgendaItems] = useState<AgendaItem[]>(() => readStoredList("control30-agenda", initialAgendaItems));
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => readStoredValue("control30-settings", defaultSettings));
   const [syncStatus, setSyncStatus] = useState("Conectando con Supabase...");
 
   useEffect(() => {
@@ -869,6 +891,22 @@ function AppShell() {
   useEffect(() => {
     writeStoredList("control30-budgets", budgets);
   }, [budgets]);
+
+  useEffect(() => {
+    writeStoredList("control30-incomes", incomes);
+  }, [incomes]);
+
+  useEffect(() => {
+    writeStoredList("control30-expenses", expenses);
+  }, [expenses]);
+
+  useEffect(() => {
+    writeStoredList("control30-agenda", agendaItems);
+  }, [agendaItems]);
+
+  useEffect(() => {
+    writeStoredValue("control30-settings", appSettings);
+  }, [appSettings]);
 
   useEffect(() => {
     let active = true;
@@ -886,26 +924,31 @@ function AppShell() {
         if (!active) return;
 
         if (settingsResponse.data) {
-          setAppSettings({
+          const remoteSettings = {
             id: settingsResponse.data.id,
             availableMoney: Number(settingsResponse.data.available_money ?? defaultSettings.availableMoney),
             monthlySurvivalAmount: Number(settingsResponse.data.monthly_survival_amount ?? defaultSettings.monthlySurvivalAmount),
             currency: String(settingsResponse.data.currency ?? "MXN"),
             emergencyStatus: String(settingsResponse.data.emergency_status ?? "attention")
-          });
+          };
+          setAppSettings((current) => (current.id ? current : remoteSettings));
         }
 
         if (incomesResponse.data && incomesResponse.data.length > 0) {
-          setIncomes(incomesResponse.data.map((row) => incomeFromRow(row)));
+          const remote = incomesResponse.data.map((row) => incomeFromRow(row));
+          setIncomes((current) => mergeById(current, remote));
         }
         if (expensesResponse.data && expensesResponse.data.length > 0) {
-          setExpenses(expensesResponse.data.map((row) => expenseFromRow(row)));
+          const remote = expensesResponse.data.map((row) => expenseFromRow(row));
+          setExpenses((current) => mergeById(current, remote));
         }
         if (budgetsResponse.data && budgetsResponse.data.length > 0) {
-          setBudgets(budgetsResponse.data.map((row) => budgetFromRow(row)));
+          const remote = budgetsResponse.data.map((row) => budgetFromRow(row));
+          setBudgets((current) => mergeById(current, remote));
         }
         if (agendaResponse.data && agendaResponse.data.length > 0) {
-          setAgendaItems(agendaResponse.data.map((row) => agendaFromRow(row)));
+          const remote = agendaResponse.data.map((row) => agendaFromRow(row));
+          setAgendaItems((current) => mergeById(current, remote));
         }
 
         const firstError = settingsResponse.error ?? incomesResponse.error ?? expensesResponse.error ?? budgetsResponse.error ?? agendaResponse.error;
@@ -998,6 +1041,10 @@ function AppShell() {
   }
 
   async function saveIncomeRecord(income: Income) {
+    setIncomes((current) => {
+      const exists = current.some((item) => item.id === income.id);
+      return exists ? current.map((item) => (item.id === income.id ? income : item)) : [income, ...current];
+    });
     const attachmentUrl = (await uploadReceipt(income.attachmentFile, "incomes")) ?? income.attachmentUrl;
     const payload = {
       ...(isUuid(income.id) ? { id: income.id } : {}),
@@ -1012,7 +1059,7 @@ function AppShell() {
     };
     const { data, error } = await supabase.from("incomes").upsert(payload).select().single();
     if (error) {
-      setSyncStatus(`No se guardo ingreso: ${error.message}`);
+      setSyncStatus(`Ingreso guardado en este dispositivo. Supabase dijo: ${error.message}`);
       return;
     }
     const saved = incomeFromRow(data);
@@ -1027,11 +1074,17 @@ function AppShell() {
     setIncomes((current) => current.filter((item) => item.id !== id));
     if (isUuid(id)) {
       const { error } = await supabase.from("incomes").delete().eq("id", id);
-      setSyncStatus(error ? `No se borro ingreso: ${error.message}` : "Ingreso borrado.");
+      setSyncStatus(error ? `Ingreso borrado en este dispositivo. Supabase dijo: ${error.message}` : "Ingreso borrado.");
+    } else {
+      setSyncStatus("Ingreso borrado en este dispositivo.");
     }
   }
 
   async function saveExpenseRecord(expense: Expense) {
+    setExpenses((current) => {
+      const exists = current.some((item) => item.id === expense.id);
+      return exists ? current.map((item) => (item.id === expense.id ? expense : item)) : [expense, ...current];
+    });
     const attachmentUrl = (await uploadReceipt(expense.attachmentFile, "expenses")) ?? expense.attachmentUrl;
     const payload = {
       ...(isUuid(expense.id) ? { id: expense.id } : {}),
@@ -1052,7 +1105,7 @@ function AppShell() {
     };
     const { data, error } = await supabase.from("expenses").upsert(payload).select().single();
     if (error) {
-      setSyncStatus(`No se guardo gasto: ${error.message}`);
+      setSyncStatus(`Gasto guardado en este dispositivo. Supabase dijo: ${error.message}`);
       return;
     }
     const saved = expenseFromRow(data);
@@ -1067,7 +1120,9 @@ function AppShell() {
     setExpenses((current) => current.filter((item) => item.id !== id));
     if (isUuid(id)) {
       const { error } = await supabase.from("expenses").delete().eq("id", id);
-      setSyncStatus(error ? `No se borro gasto: ${error.message}` : "Gasto borrado.");
+      setSyncStatus(error ? `Gasto borrado en este dispositivo. Supabase dijo: ${error.message}` : "Gasto borrado.");
+    } else {
+      setSyncStatus("Gasto borrado en este dispositivo.");
     }
   }
 
@@ -1110,6 +1165,10 @@ function AppShell() {
   }
 
   async function saveAgendaRecord(item: AgendaItem) {
+    setAgendaItems((current) => {
+      const exists = current.some((entry) => entry.id === item.id);
+      return exists ? current.map((entry) => (entry.id === item.id ? item : entry)) : [item, ...current];
+    });
     const payload = {
       ...(isUuid(item.id) ? { id: item.id } : {}),
       title: item.title,
@@ -1126,7 +1185,7 @@ function AppShell() {
     };
     const { data, error } = await supabase.from("agenda_items").upsert(payload).select().single();
     if (error) {
-      setSyncStatus(`No se guardo pendiente: ${error.message}`);
+      setSyncStatus(`Pendiente guardado en este dispositivo. Supabase dijo: ${error.message}`);
       return;
     }
     const saved = agendaFromRow(data);
@@ -1141,7 +1200,9 @@ function AppShell() {
     setAgendaItems((current) => current.map((item) => (item.id === id ? { ...item, status, updatedAt: new Date().toISOString() } : item)));
     if (isUuid(id)) {
       const { error } = await supabase.from("agenda_items").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
-      setSyncStatus(error ? `No se actualizo pendiente: ${error.message}` : "Pendiente actualizado.");
+      setSyncStatus(error ? `Pendiente actualizado en este dispositivo. Supabase dijo: ${error.message}` : "Pendiente actualizado.");
+    } else {
+      setSyncStatus("Pendiente actualizado en este dispositivo.");
     }
   }
 
@@ -1149,7 +1210,9 @@ function AppShell() {
     setAgendaItems((current) => current.filter((item) => item.id !== id));
     if (isUuid(id)) {
       const { error } = await supabase.from("agenda_items").delete().eq("id", id);
-      setSyncStatus(error ? `No se borro pendiente: ${error.message}` : "Pendiente borrado.");
+      setSyncStatus(error ? `Pendiente borrado en este dispositivo. Supabase dijo: ${error.message}` : "Pendiente borrado.");
+    } else {
+      setSyncStatus("Pendiente borrado en este dispositivo.");
     }
   }
 
