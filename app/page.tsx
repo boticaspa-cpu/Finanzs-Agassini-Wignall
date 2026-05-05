@@ -1281,13 +1281,22 @@ function AppShell() {
   }
 
   return (
-    <main className="min-h-screen bg-calm text-ink lg:flex">
+    <main className="min-h-screen overflow-x-hidden bg-calm text-ink lg:flex">
       <aside className="hidden w-72 shrink-0 border-r border-green-900/10 bg-white px-5 py-6 lg:block">
         <div className="mb-7">
           <p className="text-sm font-semibold text-slate-500">Control 30</p>
           <p className="mt-1 text-2xl font-bold">Familia Agassl</p>
         </div>
         <div className="space-y-2">
+          <button
+            className={`flex min-h-12 w-full items-center gap-3 rounded-2xl px-4 text-left font-semibold ${
+              screen === "dashboard" ? "bg-ink text-white" : "text-slate-600 hover:bg-green-50"
+            }`}
+            onClick={() => setScreen("dashboard")}
+          >
+            <LayoutDashboard className="h-5 w-5" />
+            Dashboard
+          </button>
           {navItems.map((item) => (
             <button
               key={item.id}
@@ -1302,7 +1311,14 @@ function AppShell() {
           ))}
         </div>
         <button
-          className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-olive px-4 font-semibold text-white"
+          className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-ink px-4 font-semibold text-white"
+          onClick={() => setQuickOpen(true)}
+        >
+          <Plus className="h-5 w-5" />
+          Agregar
+        </button>
+        <button
+          className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-olive px-4 font-semibold text-white"
           onClick={() => setScreen("planb")}
         >
           <BriefcaseBusiness className="h-5 w-5" />
@@ -1342,7 +1358,7 @@ function AppShell() {
         </div>
       </header>
 
-      <section className="mx-auto w-full max-w-6xl px-5 py-5 lg:px-8 lg:py-7">
+      <section className="mx-auto w-full max-w-full px-4 py-5 sm:px-5 lg:max-w-6xl lg:px-8 lg:py-7">
         {screen === "dashboard" && <Dashboard totals={totals} settings={appSettings} syncStatus={syncStatus} onSaveSettings={(next) => void saveSettings(next)} setScreen={setScreen} />}
         {screen === "incomes" && <IncomeScreen incomes={incomes} onSaveIncome={(income) => void saveIncomeRecord(income)} onDeleteIncome={(id) => void deleteIncomeRecord(id)} />}
         {screen === "expenses" && <ExpenseScreen expenses={expenses} onSaveExpense={(expense) => void saveExpenseRecord(expense)} onDeleteExpense={(id) => void deleteExpenseRecord(id)} />}
@@ -1364,7 +1380,7 @@ function AppShell() {
 
       {quickOpen && (
         <div className="fixed inset-0 z-30 bg-ink/30 px-5 pb-28 pt-20 lg:flex lg:items-start lg:justify-center" onClick={() => setQuickOpen(false)}>
-          <div className="rounded-2xl bg-white p-3 shadow-soft" onClick={(event) => event.stopPropagation()}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-3 shadow-soft" onClick={(event) => event.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between px-2">
               <p className="font-semibold">Agregar rapido</p>
               <button
@@ -1404,7 +1420,7 @@ function AppShell() {
         <Plus className="h-7 w-7" />
       </button>
 
-      <nav className="fixed bottom-0 left-1/2 z-30 grid w-full -translate-x-1/2 grid-cols-5 border-t border-slate-200 bg-white px-2 pb-3 pt-2 lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid w-full grid-cols-5 border-t border-slate-200 bg-white px-2 pb-3 pt-2 lg:hidden">
         {navItems.map((item) => (
           <button
             key={item.id}
