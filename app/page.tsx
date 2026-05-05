@@ -1285,7 +1285,7 @@ function AppShell() {
       <aside className="hidden w-72 shrink-0 border-r border-green-900/10 bg-white px-5 py-6 lg:block">
         <div className="mb-7">
           <p className="text-sm font-semibold text-slate-500">Control 30</p>
-          <p className="mt-1 text-2xl font-bold">Claridad financiera</p>
+          <p className="mt-1 text-2xl font-bold">Familia Agassl</p>
         </div>
         <div className="space-y-2">
           {navItems.map((item) => (
