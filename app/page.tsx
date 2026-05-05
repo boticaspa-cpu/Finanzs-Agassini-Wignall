@@ -93,6 +93,17 @@ type Income = {
   attachmentUrl?: string;
   attachmentFile?: File;
 };
+type Account = {
+  id: string;
+  name: string;
+  type: "Banco" | "Tarjeta credito" | "Tarjeta debito" | "Efectivo" | "Ahorros";
+  owner: "Maria" | "Gina" | "Compartida" | "Botica Spa" | "Walkme";
+  balance: number;
+  debt: number;
+  due: string;
+  status: "Activa" | "Pendiente pago" | "Pagada" | "Critica" | "Ahorro";
+  note: string;
+};
 type AppSettings = {
   id?: string;
   availableMoney: number;
@@ -154,46 +165,72 @@ const authorizedUsers: Record<string, string> = {
 
 const accessCodeHash = "ee78e630710019726506a5762a204876a71e300a2ec57da1445eb3644ca80bb1";
 
-const accounts = [
+const initialAccounts: Account[] = [
   {
-    name: "Cuenta Maria",
-    type: "Cuenta bancaria",
-    owner: "Maria",
-    balance: 18500,
-    debt: 0,
-    due: "",
-    status: "Activa",
-    note: "Principal para casa"
-  },
-  {
-    name: "Ahorros compartidos",
-    type: "Ahorros",
+    id: "account-nu",
+    name: "Cuenta NU",
+    type: "Banco",
     owner: "Compartida",
-    balance: 9500,
+    balance: 0,
     debt: 0,
     due: "",
     status: "Activa",
-    note: "Usar solo para pagos urgentes"
+    note: "Cuenta bancaria"
   },
   {
-    name: "Tarjeta Gina",
-    type: "Tarjeta de credito",
-    owner: "Gina",
+    id: "account-nu-card",
+    name: "Tarjeta NU",
+    type: "Tarjeta credito",
+    owner: "Compartida",
     balance: 0,
-    debt: 7800,
-    due: "2026-05-06",
-    status: "Deuda",
-    note: "Pago minimo esta semana"
+    debt: 0,
+    due: "",
+    status: "Pendiente pago",
+    note: "Pago pendiente"
   },
   {
-    name: "Efectivo casa",
+    id: "account-plata-card",
+    name: "Plata Card",
+    type: "Tarjeta credito",
+    owner: "Compartida",
+    balance: 0,
+    debt: 0,
+    due: "",
+    status: "Pendiente pago",
+    note: "Pago pendiente"
+  },
+  {
+    id: "account-banco-azteca",
+    name: "Banco Azteca",
+    type: "Banco",
+    owner: "Compartida",
+    balance: 0,
+    debt: 0,
+    due: "",
+    status: "Activa",
+    note: "Cuenta de ingresos"
+  },
+  {
+    id: "account-cash",
+    name: "Efectivo",
     type: "Efectivo",
     owner: "Compartida",
-    balance: 800,
+    balance: 0,
     debt: 0,
     due: "",
-    status: "Critica",
-    note: "Menos de $1,000"
+    status: "Activa",
+    note: "Dinero disponible en efectivo"
+  },
+  {
+    id: "account-savings",
+    name: "Ahorros",
+    type: "Ahorros",
+    owner: "Compartida",
+    balance: 0,
+    debt: 0,
+    due: "",
+    status: "Ahorro",
+    note: "Ahorros disponibles"
   }
 ];
 
@@ -710,6 +747,8 @@ function writeStoredList<T>(key: string, value: T[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(key, JSON.stringify(value));
 }
+
+const accountOptions = initialAccounts.map((account) => ({ name: account.name }));
 
 function newRecordId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}`;
@@ -1370,6 +1409,11 @@ function Dashboard({
 
       <SettingsQuickCard settings={settings} syncStatus={syncStatus} onSave={onSaveSettings} />
 
+      <div className="grid gap-3 lg:grid-cols-2">
+        <AreaButton label="Dinero actual" value="NU, Plata Card, Banco Azteca, efectivo y ahorros" icon={Wallet} onClick={() => setScreen("accounts")} />
+        <AreaButton label="Solo ingresos" value="Registrar entradas del dia, semana o mes" icon={ArrowUpCircle} onClick={() => setScreen("incomes")} />
+      </div>
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard label="Minimo mensual" value={money.format(settings.monthlySurvivalAmount)} />
         <MetricCard label="Ingresos del mes" value={money.format(totals.monthIncome)} />
@@ -1495,7 +1539,11 @@ function IncomeScreen({
 
   return (
     <div className="space-y-4">
-      <CalmNotice text="Registra ingresos por negocio o persona. Puedes dictarlo por voz y adjuntar foto o PDF; se guarda en Supabase para que no se pierda al refrescar." />
+      <div className="rounded-3xl bg-white p-5 shadow-sm">
+        <h2 className="text-3xl font-bold tracking-normal">Solo ingresos</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">Registra todo lo que entra en el dia, semana o mes: ventas, depositos, apoyo, reembolsos o prestamos.</p>
+      </div>
+      <CalmNotice text="Puedes dictarlo por voz y adjuntar foto o PDF; se guarda en Supabase para que no se pierda al refrescar." />
       <div className="grid grid-cols-2 gap-3">
         <MetricCard label="Total ingresos" value={money.format(total)} />
         <MetricCard label="Registros" value={`${incomes.length}`} />
@@ -1846,25 +1894,115 @@ function BudgetItemCard({ budget, actual, onEdit, onDelete }: { budget: BudgetIt
 }
 
 function AccountsScreen() {
+  const [items, setItems] = useState<Account[]>(() => readStoredList("control30-accounts", initialAccounts));
+  const [draft, setDraft] = useState<Account>({
+    id: newRecordId(),
+    name: "",
+    type: "Banco",
+    owner: "Compartida",
+    balance: 0,
+    debt: 0,
+    due: "",
+    status: "Activa",
+    note: ""
+  });
+  const available = items.filter((item) => item.type !== "Tarjeta credito").reduce((sum, item) => sum + item.balance, 0);
+  const cardDebt = items.filter((item) => item.type === "Tarjeta credito").reduce((sum, item) => sum + item.debt, 0);
+
+  useEffect(() => {
+    writeStoredList("control30-accounts", items);
+  }, [items]);
+
+  function update<K extends keyof Account>(key: K, value: Account[K]) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function saveAccount() {
+    if (!draft.name.trim()) return;
+    const next = { ...draft, name: draft.name.trim(), balance: Number(draft.balance) || 0, debt: Number(draft.debt) || 0 };
+    setItems((current) => {
+      const exists = current.some((item) => item.id === next.id);
+      return exists ? current.map((item) => (item.id === next.id ? next : item)) : [next, ...current];
+    });
+    setDraft({ id: newRecordId(), name: "", type: "Banco", owner: "Compartida", balance: 0, debt: 0, due: "", status: "Activa", note: "" });
+  }
+
+  function editAccount(account: Account) {
+    setDraft(account);
+  }
+
+  function deleteAccount(id: string) {
+    setItems((current) => current.filter((item) => item.id !== id));
+  }
+
+  function markPaid(id: string) {
+    setItems((current) => current.map((item) => (item.id === id ? { ...item, debt: 0, status: "Pagada", note: item.note || "Pago marcado" } : item)));
+  }
+
   return (
-    <div className="space-y-4">
-      <MockForm fields={["Nombre", "Tipo", "Dueno", "Saldo actual", "Limite de credito", "Deuda actual", "Fecha de corte", "Fecha limite", "Pago minimo", "Estado", "Notas"]} />
-      <SectionTitle title="Cuentas y tarjetas" />
+    <div className="space-y-5">
+      <div className="rounded-3xl bg-white p-5 shadow-sm">
+        <h2 className="text-3xl font-bold tracking-normal">Dinero actual</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">Registra lo que tienes hoy: banco, tarjetas, efectivo y ahorros.</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MetricCard label="Disponible" value={money.format(available)} />
+        <MetricCard label="Tarjetas pendiente" value={money.format(cardDebt)} tone={cardDebt > 0 ? "red" : "default"} />
+        <MetricCard label="Cuentas" value={`${items.length}`} />
+        <MetricCard label="Neto" value={money.format(available - cardDebt)} tone={available - cardDebt < 0 ? "red" : "default"} />
+      </div>
+
+      <Card>
+        <p className="mb-3 font-bold">{items.some((item) => item.id === draft.id) ? "Editar cuenta" : "Agregar cuenta"}</p>
+        <div className="grid gap-3">
+          <input className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.name} onChange={(event) => update("name", event.target.value)} placeholder="Ej. NU, Plata Card, Banco Azteca, Efectivo" />
+          <div className="grid grid-cols-2 gap-3">
+            <select className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.type} onChange={(event) => update("type", event.target.value as Account["type"])}>
+              {["Banco", "Tarjeta credito", "Tarjeta debito", "Efectivo", "Ahorros"].map((type) => <option key={type}>{type}</option>)}
+            </select>
+            <select className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.owner} onChange={(event) => update("owner", event.target.value as Account["owner"])}>
+              {["Maria", "Gina", "Compartida", "Botica Spa", "Walkme"].map((owner) => <option key={owner}>{owner}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <input className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" inputMode="decimal" value={draft.balance || ""} onChange={(event) => update("balance", Number(event.target.value))} placeholder="Saldo actual" />
+            <input className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" inputMode="decimal" value={draft.debt || ""} onChange={(event) => update("debt", Number(event.target.value))} placeholder="Deuda pendiente" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <input className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" type="date" value={draft.due} onChange={(event) => update("due", event.target.value)} />
+            <select className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.status} onChange={(event) => update("status", event.target.value as Account["status"])}>
+              {["Activa", "Pendiente pago", "Pagada", "Critica", "Ahorro"].map((status) => <option key={status}>{status}</option>)}
+            </select>
+          </div>
+          <textarea className="min-h-20 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none" value={draft.note} onChange={(event) => update("note", event.target.value)} placeholder="Notas" />
+          <button className="min-h-12 rounded-xl bg-ink px-4 font-semibold text-white disabled:opacity-50" disabled={!draft.name.trim()} onClick={saveAccount}>
+            Guardar cuenta
+          </button>
+        </div>
+      </Card>
+
+      <SectionTitle title="Cuentas, tarjetas y efectivo" />
       <div className="space-y-3">
-        {accounts.map((account) => (
-          <Card key={account.name}>
+        {items.map((account) => (
+          <Card key={account.id}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-semibold">{account.name}</p>
                 <p className="mt-1 text-sm text-slate-500">{account.type} - {account.owner}</p>
               </div>
-              <StatusPill label={account.status} tone={account.status === "Critica" || account.status === "Deuda" ? "red" : "green"} />
+              <StatusPill label={account.status} tone={account.status === "Critica" || account.status === "Pendiente pago" ? "red" : "green"} />
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <MetricCard label="Saldo" value={money.format(account.balance)} compact />
               <MetricCard label="Deuda" value={money.format(account.debt)} compact tone={account.debt > 0 ? "red" : "default"} />
             </div>
             <p className="mt-3 text-sm text-slate-600">{account.note}</p>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <button className="min-h-10 rounded-xl bg-slate-100 px-2 text-xs font-bold text-slate-700" onClick={() => editAccount(account)}>Editar</button>
+              <button className="min-h-10 rounded-xl bg-green-50 px-2 text-xs font-bold text-stable" onClick={() => markPaid(account.id)}>Marcar pago</button>
+              <button className="min-h-10 rounded-xl bg-red-50 px-2 text-xs font-bold text-emergency" onClick={() => deleteAccount(account.id)}>Borrar</button>
+            </div>
           </Card>
         ))}
       </div>
@@ -3082,7 +3220,7 @@ function IncomeEditor({
             value={draft.account}
             onChange={(event) => update("account", event.target.value)}
           >
-            {accounts.map((account) => (
+            {accountOptions.map((account) => (
               <option key={account.name} value={account.name}>
                 {account.name}
               </option>
@@ -3806,7 +3944,7 @@ function titleFor(screen: Screen) {
     dashboard: "Dashboard",
     incomes: "Ingresos",
     expenses: "Egresos",
-    accounts: "Cuentas",
+    accounts: "Dinero actual",
     debts: "Deudas",
     subscriptions: "Suscripciones",
     payments: "Pagos proximos",
