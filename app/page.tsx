@@ -34,7 +34,7 @@ import {
   X
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../lib/supabase/client";
+import { isSupabaseConfigured, supabase } from "../lib/supabase/client";
 
 type Screen =
   | "dashboard"
@@ -787,6 +787,7 @@ function receiptKind(file: File) {
 
 async function uploadReceipt(file: File | undefined, folder: "incomes" | "expenses") {
   if (!file) return undefined;
+  if (!supabase) return undefined;
   const extension = file.name.split(".").pop() || "file";
   const path = `${folder}/${newRecordId()}.${extension}`;
   const { error } = await supabase.storage.from("receipts").upload(path, file, { upsert: true });
@@ -912,6 +913,11 @@ function AppShell() {
     let active = true;
 
     async function loadRealData() {
+      if (!isSupabaseConfigured || !supabase) {
+        setSyncStatus("Vercel necesita variables de Supabase. Mientras tanto la app guarda en este dispositivo.");
+        return;
+      }
+
       try {
         const [settingsResponse, incomesResponse, expensesResponse, budgetsResponse, agendaResponse] = await Promise.all([
           supabase.from("settings").select("*").limit(1).maybeSingle(),
@@ -1017,6 +1023,10 @@ function AppShell() {
 
   async function saveSettings(next: AppSettings) {
     setAppSettings(next);
+    if (!supabase) {
+      setSyncStatus("Configuracion guardada en este dispositivo. Falta configurar Supabase en Vercel.");
+      return;
+    }
     const payload = {
       available_money: next.availableMoney,
       monthly_survival_amount: next.monthlySurvivalAmount,
@@ -1046,6 +1056,10 @@ function AppShell() {
       return exists ? current.map((item) => (item.id === income.id ? income : item)) : [income, ...current];
     });
     const attachmentUrl = (await uploadReceipt(income.attachmentFile, "incomes")) ?? income.attachmentUrl;
+    if (!supabase) {
+      setSyncStatus("Ingreso guardado en este dispositivo. Falta configurar Supabase en Vercel.");
+      return;
+    }
     const payload = {
       ...(isUuid(income.id) ? { id: income.id } : {}),
       date: income.date,
@@ -1072,6 +1086,10 @@ function AppShell() {
 
   async function deleteIncomeRecord(id: string) {
     setIncomes((current) => current.filter((item) => item.id !== id));
+    if (!supabase) {
+      setSyncStatus("Ingreso borrado en este dispositivo. Falta configurar Supabase en Vercel.");
+      return;
+    }
     if (isUuid(id)) {
       const { error } = await supabase.from("incomes").delete().eq("id", id);
       setSyncStatus(error ? `Ingreso borrado en este dispositivo. Supabase dijo: ${error.message}` : "Ingreso borrado.");
@@ -1086,6 +1104,10 @@ function AppShell() {
       return exists ? current.map((item) => (item.id === expense.id ? expense : item)) : [expense, ...current];
     });
     const attachmentUrl = (await uploadReceipt(expense.attachmentFile, "expenses")) ?? expense.attachmentUrl;
+    if (!supabase) {
+      setSyncStatus("Gasto guardado en este dispositivo. Falta configurar Supabase en Vercel.");
+      return;
+    }
     const payload = {
       ...(isUuid(expense.id) ? { id: expense.id } : {}),
       date: expense.date,
@@ -1118,6 +1140,10 @@ function AppShell() {
 
   async function deleteExpenseRecord(id: string) {
     setExpenses((current) => current.filter((item) => item.id !== id));
+    if (!supabase) {
+      setSyncStatus("Gasto borrado en este dispositivo. Falta configurar Supabase en Vercel.");
+      return;
+    }
     if (isUuid(id)) {
       const { error } = await supabase.from("expenses").delete().eq("id", id);
       setSyncStatus(error ? `Gasto borrado en este dispositivo. Supabase dijo: ${error.message}` : "Gasto borrado.");
@@ -1131,6 +1157,10 @@ function AppShell() {
       const exists = current.some((item) => item.id === budget.id);
       return exists ? current.map((item) => (item.id === budget.id ? budget : item)) : [budget, ...current];
     });
+    if (!supabase) {
+      setSyncStatus("Presupuesto guardado en este dispositivo. Falta configurar Supabase en Vercel.");
+      return;
+    }
     const payload = {
       ...(isUuid(budget.id) ? { id: budget.id } : {}),
       area: budget.area,
@@ -1156,6 +1186,10 @@ function AppShell() {
 
   async function deleteBudgetRecord(id: string) {
     setBudgets((current) => current.filter((item) => item.id !== id));
+    if (!supabase) {
+      setSyncStatus("Presupuesto borrado en este dispositivo. Falta configurar Supabase en Vercel.");
+      return;
+    }
     if (isUuid(id)) {
       const { error } = await supabase.from("budget_items").delete().eq("id", id);
       setSyncStatus(error ? `Presupuesto borrado en este dispositivo. Supabase dijo: ${error.message}` : "Presupuesto borrado.");
@@ -1169,6 +1203,10 @@ function AppShell() {
       const exists = current.some((entry) => entry.id === item.id);
       return exists ? current.map((entry) => (entry.id === item.id ? item : entry)) : [item, ...current];
     });
+    if (!supabase) {
+      setSyncStatus("Pendiente guardado en este dispositivo. Falta configurar Supabase en Vercel.");
+      return;
+    }
     const payload = {
       ...(isUuid(item.id) ? { id: item.id } : {}),
       title: item.title,
@@ -1198,6 +1236,10 @@ function AppShell() {
 
   async function updateAgendaStatus(id: string, status: AgendaStatus) {
     setAgendaItems((current) => current.map((item) => (item.id === id ? { ...item, status, updatedAt: new Date().toISOString() } : item)));
+    if (!supabase) {
+      setSyncStatus("Pendiente actualizado en este dispositivo. Falta configurar Supabase en Vercel.");
+      return;
+    }
     if (isUuid(id)) {
       const { error } = await supabase.from("agenda_items").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
       setSyncStatus(error ? `Pendiente actualizado en este dispositivo. Supabase dijo: ${error.message}` : "Pendiente actualizado.");
@@ -1208,6 +1250,10 @@ function AppShell() {
 
   async function deleteAgendaRecord(id: string) {
     setAgendaItems((current) => current.filter((item) => item.id !== id));
+    if (!supabase) {
+      setSyncStatus("Pendiente borrado en este dispositivo. Falta configurar Supabase en Vercel.");
+      return;
+    }
     if (isUuid(id)) {
       const { error } = await supabase.from("agenda_items").delete().eq("id", id);
       setSyncStatus(error ? `Pendiente borrado en este dispositivo. Supabase dijo: ${error.message}` : "Pendiente borrado.");
