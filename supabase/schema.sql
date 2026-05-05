@@ -157,6 +157,9 @@ create table if not exists agenda_items (
   updated_at timestamptz not null default now()
 );
 
+alter table agenda_items
+add column if not exists assignee text not null default 'Ambas';
+
 create table if not exists weekly_reviews (
   id uuid primary key default gen_random_uuid(),
   week_start date not null,

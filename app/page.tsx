@@ -112,6 +112,7 @@ type AgendaType = "payment" | "task" | "debt" | "subscription" | "reminder" | "s
 type AgendaArea = "home" | "maria" | "gina" | "shared" | "botica_spa" | "walkme";
 type AgendaPriority = "urgent" | "must_pay" | "important" | "negotiable" | "pause" | "low";
 type AgendaStatus = "pending" | "done" | "paid" | "overdue" | "negotiated" | "paused";
+type AgendaAssignee = "Maria" | "Gina" | "Ambas";
 type AgendaItem = {
   id: string;
   title: string;
@@ -123,6 +124,7 @@ type AgendaItem = {
   amount: number;
   priority: AgendaPriority;
   status: AgendaStatus;
+  assignee: AgendaAssignee;
   source: "agenda" | "upcoming_payment";
   createdAt: string;
   updatedAt: string;
@@ -528,6 +530,7 @@ const initialAgendaItems: AgendaItem[] = [
     amount: 4200,
     priority: "urgent",
     status: "pending",
+    assignee: "Gina",
     source: "agenda",
     createdAt: "2026-05-01",
     updatedAt: "2026-05-01"
@@ -543,6 +546,7 @@ const initialAgendaItems: AgendaItem[] = [
     amount: 299,
     priority: "important",
     status: "pending",
+    assignee: "Maria",
     source: "agenda",
     createdAt: "2026-05-01",
     updatedAt: "2026-05-01"
@@ -558,6 +562,7 @@ const initialAgendaItems: AgendaItem[] = [
     amount: 0,
     priority: "important",
     status: "pending",
+    assignee: "Maria",
     source: "agenda",
     createdAt: "2026-05-01",
     updatedAt: "2026-05-01"
@@ -573,6 +578,7 @@ const initialAgendaItems: AgendaItem[] = [
     amount: 0,
     priority: "important",
     status: "pending",
+    assignee: "Maria",
     source: "agenda",
     createdAt: "2026-05-01",
     updatedAt: "2026-05-01"
@@ -740,6 +746,7 @@ function agendaFromRow(row: Record<string, unknown>): AgendaItem {
     amount: Number(row.amount ?? 0),
     priority: String(row.priority ?? "important") as AgendaPriority,
     status: String(row.status ?? "pending") as AgendaStatus,
+    assignee: String(row.assignee ?? "Ambas") as AgendaAssignee,
     source: "agenda",
     createdAt: String(row.created_at ?? "2026-05-01"),
     updatedAt: String(row.updated_at ?? "2026-05-01")
@@ -998,6 +1005,7 @@ function AppShell() {
       amount: item.amount,
       priority: item.priority,
       status: item.status,
+      assignee: item.assignee,
       updated_at: new Date().toISOString()
     };
     const { data, error } = await supabase.from("agenda_items").upsert(payload).select().single();
@@ -1838,6 +1846,7 @@ function paymentToAgendaItem(payment: (typeof upcomingPayments)[number]): Agenda
     amount: payment.amount,
     priority: payment.priority === "Pagar si o si" ? "must_pay" : payment.priority === "Negociar" ? "negotiable" : "important",
     status: payment.status === "Atrasado" ? "overdue" : payment.status === "Pagado" ? "paid" : "pending",
+    assignee: "Ambas",
     source: "upcoming_payment",
     createdAt: "2026-05-01",
     updatedAt: "2026-05-01"
@@ -1860,17 +1869,24 @@ function PendingScreen({
   onDeleteItem: (id: string) => void;
 }) {
   const [selectedArea, setSelectedArea] = useState<"Todos" | AgendaArea>("Todos");
+  const [selectedAssignee, setSelectedAssignee] = useState<"Todos" | AgendaAssignee>("Todos");
   const [editingItem, setEditingItem] = useState<AgendaItem | null>(null);
   const pendingTypes: AgendaType[] = ["task", "pending", "reminder", "sale"];
   const pendingItems = items.filter((item) => pendingTypes.includes(item.type));
   const openItems = pendingItems.filter((item) => !["done", "paid"].includes(item.status));
-  const visibleItems = selectedArea === "Todos" ? pendingItems : pendingItems.filter((item) => item.area === selectedArea);
+  const visibleItems = pendingItems.filter((item) => {
+    const areaMatch = selectedArea === "Todos" || item.area === selectedArea;
+    const assigneeMatch = selectedAssignee === "Todos" || item.assignee === selectedAssignee || item.assignee === "Ambas";
+    return areaMatch && assigneeMatch;
+  });
   const areaTotals = Object.fromEntries(
     (["home", "botica_spa", "walkme", "maria", "gina", "shared"] as AgendaArea[]).map((area) => [
       agendaAreaLabel(area),
       pendingItems.filter((item) => item.area === area && !["done", "paid"].includes(item.status)).length
     ])
   );
+  const mariaOpen = openItems.filter((item) => item.assignee === "Maria" || item.assignee === "Ambas").length;
+  const ginaOpen = openItems.filter((item) => item.assignee === "Gina" || item.assignee === "Ambas").length;
 
   function saveItem(item: AgendaItem) {
     onSaveItem({ ...item, type: item.type === "payment" || item.type === "debt" || item.type === "subscription" ? "pending" : item.type });
@@ -1882,15 +1898,15 @@ function PendingScreen({
       <div className="rounded-3xl bg-white p-5 shadow-sm">
         <h2 className="text-3xl font-bold tracking-normal">Pendientes</h2>
         <p className="mt-2 text-sm leading-6 text-slate-600">
-          Tareas por casa, Botica Spa y Walkme: compras, limpieza, fotos, campanas y seguimientos.
+          Agenda de pendientes de casa y trabajo, separada por area y por responsable.
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard label="Abiertos" value={`${openItems.length}`} />
-        <MetricCard label="Casa" value={`${pendingItems.filter((item) => item.area === "home" && !["done", "paid"].includes(item.status)).length}`} />
-        <MetricCard label="Botica Spa" value={`${pendingItems.filter((item) => item.area === "botica_spa" && !["done", "paid"].includes(item.status)).length}`} />
-        <MetricCard label="Walkme" value={`${pendingItems.filter((item) => item.area === "walkme" && !["done", "paid"].includes(item.status)).length}`} />
+        <MetricCard label="Maria" value={`${mariaOpen}`} />
+        <MetricCard label="Gina" value={`${ginaOpen}`} />
+        <MetricCard label="Hoy" value={`${pendingItems.filter((item) => item.date === "2026-05-01" && !["done", "paid"].includes(item.status)).length}`} />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
@@ -1901,6 +1917,7 @@ function PendingScreen({
               item={editingItem ?? undefined}
               defaultType="pending"
               defaultArea={selectedArea === "Todos" ? "home" : selectedArea}
+              defaultAssignee={selectedAssignee === "Todos" ? "Ambas" : selectedAssignee}
               onSave={saveItem}
             />
             {editingItem ? (
@@ -1909,7 +1926,7 @@ function PendingScreen({
               </button>
             ) : null}
           </Card>
-          <CalmNotice text="Ejemplos: comprar comida hijes, limpiar el refri, cambiar fotos en Walkme, limpiar sabanas Botica Spa, sacar campana de marketing." />
+          <CalmNotice text="Ejemplos: comprar comida hijes, limpiar el refri, cambiar fotos en Walkme, limpiar sabanas Botica Spa, sacar campana de marketing. Puedes asignarlo a Maria, Gina o ambas." />
         </aside>
 
         <section className="space-y-4">
@@ -1929,6 +1946,17 @@ function PendingScreen({
                 );
               })}
             </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {(["Todos", "Maria", "Gina"] as const).map((assignee) => (
+              <button
+                key={assignee}
+                className={`min-h-11 rounded-xl px-3 text-sm font-bold ${selectedAssignee === assignee ? "bg-olive text-white" : "bg-white text-slate-700 shadow-sm"}`}
+                onClick={() => setSelectedAssignee(assignee)}
+              >
+                {assignee}
+              </button>
+            ))}
           </div>
 
           <AgendaDayGroup
@@ -2185,7 +2213,7 @@ function AgendaItemCard({
         <div className="min-w-0">
           <p className="font-bold">{item.title}</p>
           <p className="mt-1 text-sm text-slate-600">
-            {item.time} · {agendaTypeLabel(item.type)} · {agendaAreaLabel(item.area)}
+            {item.time} · {agendaTypeLabel(item.type)} · {agendaAreaLabel(item.area)} · {item.assignee}
           </p>
         </div>
         <p className="shrink-0 font-bold">{item.amount > 0 ? money.format(item.amount) : ""}</p>
@@ -2269,11 +2297,13 @@ function AgendaItemForm({
   item,
   defaultType,
   defaultArea = "shared",
+  defaultAssignee = "Ambas",
   onSave
 }: {
   item?: AgendaItem;
   defaultType: AgendaType;
   defaultArea?: AgendaArea;
+  defaultAssignee?: AgendaAssignee;
   onSave: (item: AgendaItem) => void;
 }) {
   const [draft, setDraft] = useState<AgendaItem>(
@@ -2288,6 +2318,7 @@ function AgendaItemForm({
       amount: 0,
       priority: defaultType === "payment" || defaultType === "debt" ? "must_pay" : "important",
       status: "pending",
+      assignee: defaultAssignee,
       source: "agenda",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -2346,6 +2377,14 @@ function AgendaItemForm({
           </select>
         </label>
       </div>
+      <label className="grid gap-1">
+        <span className="text-sm font-semibold text-slate-600">Responsable</span>
+        <select className="min-h-12 rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none" value={draft.assignee} onChange={(event) => update("assignee", event.target.value as AgendaAssignee)}>
+          {["Maria", "Gina", "Ambas"].map((value) => (
+            <option key={value} value={value}>{value}</option>
+          ))}
+        </select>
+      </label>
       <label className="grid gap-1">
         <span className="text-sm font-semibold text-slate-600">Descripcion</span>
         <textarea className="min-h-24 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 outline-none" value={draft.description} onChange={(event) => update("description", event.target.value)} />
