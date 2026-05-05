@@ -655,6 +655,21 @@ function priorityLabel(priority: Priority) {
   return labels[priority];
 }
 
+function readStoredList<T>(key: string, fallback: T[]) {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const stored = window.localStorage.getItem(key);
+    return stored ? (JSON.parse(stored) as T[]) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStoredList<T>(key: string, value: T[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
+
 function newRecordId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}`;
 }
@@ -760,7 +775,7 @@ function AppShell() {
   const [quickOpen, setQuickOpen] = useState(false);
   const [incomes, setIncomes] = useState<Income[]>(initialIncomes);
   const [expenses, setExpenses] = useState<Expense[]>(initialExpenses);
-  const [budgets, setBudgets] = useState<BudgetItem[]>(initialBudgets);
+  const [budgets, setBudgets] = useState<BudgetItem[]>(() => readStoredList("control30-budgets", initialBudgets));
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>(initialAgendaItems);
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultSettings);
   const [syncStatus, setSyncStatus] = useState("Conectando con Supabase...");
@@ -769,6 +784,10 @@ function AppShell() {
     setCurrentUser(window.localStorage.getItem("control30-user"));
     setAuthReady(true);
   }, []);
+
+  useEffect(() => {
+    writeStoredList("control30-budgets", budgets);
+  }, [budgets]);
 
   useEffect(() => {
     let active = true;
@@ -962,6 +981,10 @@ function AppShell() {
   }
 
   async function saveBudgetRecord(budget: BudgetItem) {
+    setBudgets((current) => {
+      const exists = current.some((item) => item.id === budget.id);
+      return exists ? current.map((item) => (item.id === budget.id ? budget : item)) : [budget, ...current];
+    });
     const payload = {
       ...(isUuid(budget.id) ? { id: budget.id } : {}),
       area: budget.area,
@@ -974,7 +997,7 @@ function AppShell() {
     };
     const { data, error } = await supabase.from("budget_items").upsert(payload).select().single();
     if (error) {
-      setSyncStatus(`No se guardo presupuesto: ${error.message}`);
+      setSyncStatus(`Presupuesto guardado en este dispositivo. Supabase dijo: ${error.message}`);
       return;
     }
     const saved = budgetFromRow(data);
@@ -989,7 +1012,9 @@ function AppShell() {
     setBudgets((current) => current.filter((item) => item.id !== id));
     if (isUuid(id)) {
       const { error } = await supabase.from("budget_items").delete().eq("id", id);
-      setSyncStatus(error ? `No se borro presupuesto: ${error.message}` : "Presupuesto borrado.");
+      setSyncStatus(error ? `Presupuesto borrado en este dispositivo. Supabase dijo: ${error.message}` : "Presupuesto borrado.");
+    } else {
+      setSyncStatus("Presupuesto borrado en este dispositivo.");
     }
   }
 
@@ -1527,6 +1552,7 @@ function BudgetScreen({
   const actualTotal = visibleBudgets.reduce((sum, item) => sum + budgetActual(item, expenses), 0);
   const fixedTotal = visibleBudgets.filter((item) => item.kind === "fixed").reduce((sum, item) => sum + item.plannedAmount, 0);
   const variableTotal = visibleBudgets.filter((item) => item.kind === "variable").reduce((sum, item) => sum + item.plannedAmount, 0);
+  const editingBudget = budgets.find((item) => item.id === editingId);
 
   function saveBudget(item: BudgetItem) {
     onSaveBudget(item);
@@ -1570,8 +1596,12 @@ function BudgetScreen({
 
       <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
         <aside className="space-y-4">
-          <BudgetEditor onSave={saveBudget} defaultArea={selectedArea === "Todos" ? "Casa" : selectedArea} />
-          <CalmNotice text="Ejemplo: si crees que el super es $8,000, ponlo como variable. Cada ticket de super registrado en Gastos sube el gasto real." />
+          {editingBudget ? (
+            <BudgetEditor key={editingBudget.id} budget={editingBudget} onSave={saveBudget} onCancel={() => setEditingId(null)} />
+          ) : (
+            <BudgetEditor onSave={saveBudget} defaultArea={selectedArea === "Todos" ? "Casa" : selectedArea} />
+          )}
+          <CalmNotice text="Puedes agregar, editar, cambiar monto, mover de area o borrar cualquier partida. Si Supabase falla, queda respaldado en este dispositivo." />
           <button className="min-h-12 w-full rounded-2xl bg-ink px-4 font-semibold text-white" onClick={() => setScreen("expenses")}>
             Cargar ticket o gasto real
           </button>
@@ -1582,10 +1612,7 @@ function BudgetScreen({
           {visibleBudgets.length === 0 ? (
             <EmptyState text="No hay partidas de presupuesto en esta seccion." />
           ) : (
-            visibleBudgets.map((item) =>
-              editingId === item.id ? (
-                <BudgetEditor key={item.id} budget={item} onSave={saveBudget} onCancel={() => setEditingId(null)} />
-              ) : (
+            visibleBudgets.map((item) => (
                 <BudgetItemCard
                   key={item.id}
                   budget={item}
@@ -1593,8 +1620,7 @@ function BudgetScreen({
                   onEdit={() => setEditingId(item.id)}
                   onDelete={() => deleteBudget(item.id)}
                 />
-              )
-            )
+            ))
           )}
         </section>
       </div>
@@ -1635,6 +1661,12 @@ function BudgetEditor({
     }
   );
 
+  useEffect(() => {
+    if (budget) {
+      setDraft(budget);
+    }
+  }, [budget]);
+
   function update<K extends keyof BudgetItem>(key: K, value: BudgetItem[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
   }
@@ -1664,7 +1696,8 @@ function BudgetEditor({
 
   return (
     <Card>
-      <p className="mb-3 font-semibold">{budget ? "Editar presupuesto" : "Agregar presupuesto"}</p>
+      <p className="mb-1 font-semibold">{budget ? "Editar presupuesto" : "Agregar presupuesto"}</p>
+      <p className="mb-3 text-sm text-slate-500">{budget ? "Cambia cualquier dato y toca Guardar cambios." : "Crea una partida nueva para casa, Botica Spa o Walkme."}</p>
       <div className="grid gap-3">
         <label className="grid gap-1">
           <span className="text-sm font-semibold text-slate-600">Nombre</span>
@@ -1707,7 +1740,7 @@ function BudgetEditor({
           <button className="min-h-12 rounded-xl bg-slate-100 px-4 font-semibold text-slate-700" onClick={onCancel}>Cancelar</button>
         ) : null}
         <button className={`${onCancel ? "" : "col-span-2"} min-h-12 rounded-xl bg-ink px-4 font-semibold text-white disabled:opacity-50`} onClick={submit} disabled={!draft.name.trim() || !draft.category.trim()}>
-          Guardar presupuesto
+          {budget ? "Guardar cambios" : "Guardar presupuesto"}
         </button>
       </div>
     </Card>
@@ -1717,6 +1750,12 @@ function BudgetEditor({
 function BudgetItemCard({ budget, actual, onEdit, onDelete }: { budget: BudgetItem; actual: number; onEdit: () => void; onDelete: () => void }) {
   const difference = budget.plannedAmount - actual;
   const progress = budget.plannedAmount > 0 ? Math.min(100, Math.round((actual / budget.plannedAmount) * 100)) : 0;
+
+  function confirmDelete() {
+    if (window.confirm(`Borrar "${budget.name}" del presupuesto?`)) {
+      onDelete();
+    }
+  }
 
   return (
     <Card>
@@ -1742,7 +1781,7 @@ function BudgetItemCard({ budget, actual, onEdit, onDelete }: { budget: BudgetIt
         <button className="min-h-11 rounded-xl bg-slate-100 px-3 font-semibold text-slate-700" onClick={onEdit}>
           Editar
         </button>
-        <button className="min-h-11 rounded-xl bg-red-50 px-3 font-semibold text-emergency" onClick={onDelete}>
+        <button className="min-h-11 rounded-xl bg-red-50 px-3 font-semibold text-emergency" onClick={confirmDelete}>
           Borrar
         </button>
       </div>
